@@ -142,7 +142,7 @@ local function main()
     expectError(Pack, bad("nosheet.lua"), "has no sheet path", "nosheet.lua")
     expectError(Pack, bad("emptyentry.lua"), "neither a front nor a back view", "emptyentry.lua")
     expectError(Pack, bad("badkey.lua"), "is not a national dex number", "badkey.lua")
-    expectError(Pack, bad("wide200.lua"), "cell size is 200", "wide200.lua")
+    expectError(Pack, bad("wide260.lua"), "cell size is 260", "wide260.lua")
     expectError(Pack, bad("size66.lua"), "cell size is 66", "size66.lua")
     expectError(Pack, bad("inkbig.lua"), "ink height is 65", "inkbig.lua")
     expectError(Pack, bad("dexout.lua"), "is outside the 64 px cell", "dexout.lua")
@@ -436,23 +436,32 @@ local function main()
   end
   now = 0
   local dex = Pokemon.dexFrontPic(25, 0)
-  check(dex ~= nil and dex.w == 64 and dex.h == 64 and dex.vanilla == nil
-    and dex.image ~= nil and dex.image:getWidth() == 64 and dex.image:getHeight() == 64,
-    "the Pokedex gets the pack frame fitted into its 64x64 box", dex)
-  if dex and dex.image then
-    -- LÖVE 11 images cannot be read back directly; a canvas can.
-    local canvas = love.graphics.newCanvas(64, 64, { dpiscale = 1 })
+  -- The dex entry draws its picture with love.graphics.draw(pic.image, 152, 24)
+  -- at the top-left of a 64x64 slot. The pack serves the animation's pose window
+  -- at 1:1 and the mod's draw wrapper centres it in the card's picture area
+  -- (112x68 at 124,20), clamped to the screen so no pose is cut off.
+  local function inkBox(image)
+    local iw, ih = image:getDimensions()
+    local canvas = love.graphics.newCanvas(iw, ih, { dpiscale = 1 })
     canvas:renderTo(function()
+      love.graphics.push("all")
+      love.graphics.origin()
+      love.graphics.setScissor()
+      love.graphics.setStencilTest()
+      love.graphics.setShader()
       love.graphics.clear(0, 0, 0, 0)
       love.graphics.setBlendMode("replace")
       love.graphics.setColor(1, 1, 1, 1)
-      love.graphics.draw(dex.image, 0, 0)
+      -- engineDraw is the draw spy's own original, so this read-back is not
+      -- caught by the mod's wrapper (which would move our dex picture).
+      engineDraw(image, 0, 0)
+      love.graphics.pop()
     end)
     local data = canvas:newImageData()
     canvas:release()
-    local minX, minY, maxX, maxY = 64, 64, -1, -1
-    for y = 0, 63 do
-      for x = 0, 63 do
+    local minX, minY, maxX, maxY = iw, ih, -1, -1
+    for y = 0, ih - 1 do
+      for x = 0, iw - 1 do
         local _, _, _, a = data:getPixel(x, y)
         if a > 0 then
           if x < minX then minX = x end
@@ -463,16 +472,67 @@ local function main()
       end
     end
     data:release()
-    local w, h = maxX - minX + 1, maxY - minY + 1
-    check(minX == 20 and minY == 22 and w == 24 and h == 20,
-      "the dex picture fits the largest-pose window, not a shrunken whole cell",
-      ("%d,%d %dx%d"):format(minX, minY, w, h))
+    return minX, minY, maxX - minX + 1, maxY - minY + 1
   end
+
+  local dex = Pokemon.dexFrontPic(25, 0)
+  -- The pack serves the animation's whole pose window at 1:1; 25's window is
+  -- 24x20, so the picture is exactly that and no pixel was reduced.
+  check(dex ~= nil and dex.w == 24 and dex.h == 20 and dex.vanilla == nil
+    and dex.image ~= nil and dex.image:getWidth() == 24 and dex.image:getHeight() == 20,
+    "the Pokedex gets the pose window at its own 24x20 size", dex)
+  if dex and dex.image then
+    local minX, minY, w, h = inkBox(dex.image)
+    check(minX == 0 and minY == 0 and w == 24 and h == 20,
+      "the dex picture keeps every pose of the window, uncut",
+      ("%d,%d %dx%d"):format(minX, minY, w, h))
+    drawCalls = {}
+    love.graphics.draw(dex.image, 152, 24)
+    -- Centred in the card's picture area (112x68 at 124,20): 124+(112-24)/2 and
+    -- 20+(68-20)/2, so the engine's own slot is ignored.
+    check(#drawCalls == 1 and drawCalls[1][2] == 168 and drawCalls[1][3] == 44,
+      "the dex picture is centred in the card's picture area",
+      drawCalls[1] and (tostring(drawCalls[1][2]) .. "," .. tostring(drawCalls[1][3])))
+    -- Page 2's size comparison draws the same picture around its 64x64 centre.
+    drawCalls = {}
+    love.graphics.draw(dex.image, 40, 104, 0, 1, 1, 32, 32)
+    -- Building that 64x64 fit draws the cell into a canvas first, so the
+    -- picture the engine finally receives is the last call.
+    local last = drawCalls[#drawCalls]
+    check(last ~= nil and last[1]:getWidth() == 64 and last[1]:getHeight() == 64,
+      "the dex size comparison still gets a 64x64 picture",
+      last and last[1]:getWidth())
+  end
+  -- 32's pose window (24x72) is taller than the card's 68px area: the picture
+  -- keeps its native size and overhangs the area instead of being reduced, and
+  -- the placement keeps it wholly on screen with its feet on the divider row.
+  local tallDex = Pokemon.dexFrontPic(32, 0)
+  if tallDex and tallDex.image then
+    check(tallDex.w == 24 and tallDex.h == 72
+      and tallDex.image:getWidth() == 24 and tallDex.image:getHeight() == 72,
+      "a tall dex picture keeps its native 24x72 size",
+      tallDex.w .. "x" .. tallDex.h)
+    local _, minY, _, h = inkBox(tallDex.image)
+    check(h == 72, "the tall dex picture is not cut", ("ink h=%d"):format(h))
+    drawCalls = {}
+    love.graphics.draw(tallDex.image, 152, 24)
+    local call = drawCalls[1]
+    check(call ~= nil and call[2] == 168 and call[3] == 16 and call[3] + 72 <= 160,
+      "the tall dex picture stands on the divider, wholly on screen",
+      call and (tostring(call[2]) .. "," .. tostring(call[3])))
+  else
+    check(false, "a tall dex picture resolves", tallDex)
+  end
+  -- The credits roll keeps its own 64x64 grid, so that kind still asks for it.
+  local creditDex = Pokemon.dexFrontPic(25, 0, "credits")
+  check(creditDex ~= nil and creditDex.image ~= nil
+    and creditDex.image:getWidth() == 64 and creditDex.image:getHeight() == 64,
+    "the credits roll still gets a 64x64 picture")
   now = 10 / 60
   local dexNext = Pokemon.dexFrontPic(25, 0)
   check(dexNext ~= nil and dexNext.image ~= nil and dex.image ~= nil
     and dexNext.image ~= dex.image,
-    "the Pokedex keeps animating inside the fixed largest-pose window")
+    "the Pokedex keeps animating inside the fixed window")
   check(Pokemon.dexFrontPic(1, 0).vanilla == "dex",
     "the Pokedex keeps the cartridge picture for an absent species")
 

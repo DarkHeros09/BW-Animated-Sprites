@@ -132,13 +132,14 @@ Written by `bwsprites coords`, read by `bwsprites export -coords`.
 ## mod pack (index.lua)
 
 `bwsprites modpack` writes the same measurements for the gen1recomp mod, keeping
-facets' ground rule but using Black/White's native art size: **one square cell
-per frame, 64..160 px on the enemy front side and 64..112 px on the player back
-side**. No enemy front is resampled and nothing is enlarged; a back view past
-112 px is uniformly reduced. The union's lowest ink row lands on the cell's last
-row, horizontally centred, and every frame keeps its own offset inside the union
-so intra-animation motion survives. A front taller than the 72 rows above the
-enemy ground row is anchored with its ink top on scene row 0 and runs behind the
+facets' ground rule but using the art's own size: **one square cell per frame,
+as large as the animation's union needs, never below 64 and never resampled**.
+Nothing is enlarged and nothing is reduced on either side, so a front or a back
+keeps every pixel the dump contains and a cell may be wider or taller than the
+battle's 64 px slot. The union's lowest ink row lands on the cell's last row,
+horizontally centred, and every frame keeps its own offset inside the union so
+intra-animation motion survives. A front taller than the 72 rows above the enemy
+ground row is anchored with its ink top on scene row 0 and runs behind the
 battle UI. A front wider than the room right of the enemy base is slid left by
 the draw wrapper to fit the 240 px scene, and a tall player back is moved down
 until its ink top clears the enemy HP box (row 46) without changing its size.
@@ -151,10 +152,14 @@ by `(64 - width) / 2`; the player's back is shifted once more by its wide-cell
 overhang so it stops one pixel from the screen edge, and a tall back is shifted
 down until its ink starts on scene row 46 or later (the bottom of the enemy HP
 box in singles). Centre-anchored engines need no centring shift.
-`Pack:dexFrame` takes the entry's `<side>Dex` window from the current animation
-frame and fits it into the Pokedex's 64×64 window, so the dex animates at the
-largest pose's scale. A legacy pack may declare up to 160 px per side; the
-reader accepts that range and applies the same correction.
+`Pack:dexFrame` takes the entry's `<side>Dex` window -- the box enclosing every
+pose -- from the current animation frame and crops it at 1:1: no resampling, so
+the Pokedex shows the dump's pixels. The mod centres that picture in the card's
+picture area (112×68 at 124,20, above the flavour-text divider) and clamps it to
+the screen, so a window larger than the area overhangs the card instead of being
+reduced and no pose is cut off. `Pack:boxFrame` is the 64×64 fit that page 2's
+size comparison and the credits roll still use. A pack may declare cells up to
+256 px; the reader accepts that range and applies the same correction.
 
 ```
 pack/
@@ -184,10 +189,10 @@ return {
       front = "front/1/normal.png",
       frontShiny = "front/1/shiny.png",
       frontFrames = 3,
-      frontSize = 64,         -- 64..160, multiple of 4
+      frontSize = 64,         -- 64..256, multiple of 4, the art's own size
       frontColumns = 1,       -- cells per sheet row, 1..64
       frontInkH = 46,         -- union ink height inside the cell (1..Size)
-      frontDex = { x = 8, y = 21, w = 49, h = 43 },  -- Pokedex largest-pose window
+      frontDex = { x = 8, y = 21, w = 49, h = 43 },  -- Pokedex window: every pose's box
       frontDurations = { 54, 12, 6 },
       frontLoopStart = 0,
       back = "back/1/normal.png",

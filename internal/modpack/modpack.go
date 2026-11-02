@@ -1,7 +1,7 @@
-// Package modpack builds the LÖVE engine mod: one cell of animated
-// Black/White art per species and view at native size (up to 160 px for an
-// enemy front, 112 px for the player's back), plus the Lua index the mod reads
-// at runtime.
+// Package modpack builds the LÖVE engine mod: one cell of animated Black/White
+// art per species and view at the art's own native size (nothing is resampled,
+// so a cell can be larger than the battle slot), plus the Lua index the mod
+// reads at runtime.
 package modpack
 
 import (
@@ -14,7 +14,6 @@ import (
 	"strconv"
 
 	"bwsprites/internal/gen5"
-	"bwsprites/internal/measure"
 )
 
 // Format is the mod pack format revision. Format 2 uses native square cells.
@@ -32,6 +31,9 @@ type Source struct {
 	Path string
 	Code string
 	Name string
+	// Importer is the id of the importer that read the dump: gen5_bw for
+	// Black/White, gen5_bw2 for Black 2/White 2.
+	Importer string
 	// Digest is the SHA-256 of the dump, so two builds can be compared
 	// without shipping the ROM.
 	Digest string
@@ -52,14 +54,13 @@ type View struct {
 	InkH int
 	// InkW is the scaled union ink width, kept for reports only.
 	InkW int
-	// DexX/DexY/DexW/DexH is the union of every frame's painted box in cell
-	// coordinates. The Pokedex crops this fixed box from the current frame and
-	// fits it into its 64x64 box, so the picture keeps one steady size while it
-	// plays instead of shrinking and swelling with the pose.
+	// DexX/DexY/DexW/DexH is the box enclosing every frame's painted ink in cell
+	// coordinates. The Pokedex crops that fixed window from the current frame at
+	// 1:1, so the animation keeps its own pixels and position and no pose swings
+	// out of the window; the mod centres the picture in the card and keeps it on
+	// screen rather than reducing it.
 	DexX, DexY int
 	DexW, DexH int
-	// Scaled reports whether the art had to be reduced to fit HostMaxSize.
-	Scaled bool
 	// Durations is the tick count of each frame.
 	Durations []int
 	// LoopStart is the frame the animation jumps back to after its last
@@ -87,8 +88,6 @@ type Report struct {
 	Entries int
 	// Sheets is the number of strips written.
 	Sheets int
-	// Scaled is the number of views the art had to be reduced for.
-	Scaled int
 	// Bytes is the total size of the files written.
 	Bytes int64
 }
@@ -198,10 +197,11 @@ func Build(rom *gen5.ROM, out string, opts Options, force bool) (*Report, error)
 
 	index := &indexFile{
 		Source: Source{
-			Path:   rom.Path(),
-			Code:   rom.Code(),
-			Name:   rom.Name(),
-			Digest: digest,
+			Path:     rom.Path(),
+			Code:     rom.Code(),
+			Name:     rom.Name(),
+			Importer: rom.ImporterID(),
+			Digest:   digest,
 		},
 		Entries: entries,
 	}
@@ -222,16 +222,9 @@ func buildView(rom *gen5.ROM, out string, dex int, side string, female bool, opt
 	if female && sprite.GenderFallback {
 		return nil, fmt.Errorf("dex %d %s: the dump has no female graphic", dex, side)
 	}
-	maxW, maxH := measure.HostFrontWidth, measure.HostFrontMax
-	if side == "back" {
-		maxW, maxH = measure.HostBackMax, measure.HostBackMax
-	}
-	// 0 means native: neither side is resampled, so an enemy front keeps the
-	// pixels Black/White authored instead of a nearest-neighbour approximation.
-	const targetH = 0
 	var view *View
 	for _, palette := range opts.palettes() {
-		rendered, err := render(sprite, palette, maxW, maxH, targetH)
+		rendered, err := render(sprite, palette)
 		if err != nil {
 			return nil, fmt.Errorf("dex %d %s %s: %w", dex, side, palette, err)
 		}
@@ -249,9 +242,6 @@ func buildView(rom *gen5.ROM, out string, dex int, side string, female bool, opt
 		report.Bytes += size
 		if view == nil {
 			view = rendered.view
-			if view.Scaled {
-				report.Scaled++
-			}
 		} else if view.Frames != rendered.view.Frames || !sameDurations(view.Durations, rendered.view.Durations) {
 			return nil, fmt.Errorf("dex %d %s: %s and %s disagree on the animation (%d vs %d frames)",
 				dex, side, opts.palettes()[0], palette, view.Frames, rendered.view.Frames)

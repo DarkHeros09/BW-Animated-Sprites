@@ -73,7 +73,7 @@ func TestRealROMModPack(t *testing.T) {
 	}
 	for _, want := range []string{
 		"  format = 2,",
-		"  importer = \"gen5_bw\",",
+		"  importer = \"" + rom.ImporterID() + "\",",
 		"  tickRate = 60,",
 		"  box = 64,",
 		"  pad = 0,",
@@ -81,7 +81,7 @@ func TestRealROMModPack(t *testing.T) {
 		"frontColumns = ",
 		"frontInkH = ",
 		"sha256:",
-		"\"IRB",
+		"\"" + rom.Code()[:3],
 		"[649] = {",
 	} {
 		if !strings.Contains(string(index), want) {
@@ -105,16 +105,15 @@ func TestRealROMModPack(t *testing.T) {
 			}
 			for _, palette := range []string{"normal", "shiny"} {
 				sheet := filepath.Join(out, side, itoa(d), palette+".png")
-				maxCell := measure.HostFrontWidth
-				if side == "back" {
-					maxCell = measure.HostBackMax
-				}
-				checkSheet(t, sheet, len(timeline.Poses), maxCell)
+				// No view is ever reduced: a cell is the animation's own union, so
+				// it may be larger than the battle slot and only MaxCell bounds
+				// a corrupt measurement.
+				checkSheet(t, sheet, len(timeline.Poses), measure.MaxCell)
 				// Charizard's back art is the reason the back cell may exceed 64:
 				// at a facets 64x64 cell its waist-wide silhouette is only 53 px
 				// tall, which reads as tiny next to a 64 px front. The back cell
 				// must therefore keep the art's native size.
-				if d == 6 && side == "back" {
+				if d == 6 && side == "back" && rom.Family() == "bw" {
 					if size := sheetCellOf(t, sheet, len(timeline.Poses)); size < 96 {
 						t.Errorf("Charizard back is a %d px cell, want its native size (at least 96)", size)
 					}
@@ -124,7 +123,7 @@ func TestRealROMModPack(t *testing.T) {
 				// art is a 92 px cell, Pikachu keeps its 51x46 in a 64 px cell,
 				// Lugia's 153x92 is a 156 px cell, and Rayquaza's 98x82 a 100 px
 				// cell. The 112/160 caps never bind.
-				if side == "front" {
+				if side == "front" && rom.Family() == "bw" {
 					size := sheetCellOf(t, sheet, len(timeline.Poses))
 					for _, want := range []struct {
 						dex, cell int
@@ -155,6 +154,121 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+// TestRealROMExtractionIsPixelExact proves the pack ships the dump's own art:
+// every composed frame reaches its sheet cell with the same ink size and the
+// same number of painted pixels, so nothing was resampled on the way out, and
+// no cell is smaller than the frame it holds (nothing is downscaled).
+//
+//	BW_ROM=/path/to/black.nds go test ./internal/modpack -run TestRealROMExtractionIsPixelExact
+func TestRealROMExtractionIsPixelExact(t *testing.T) {
+	path := os.Getenv("BW_ROM")
+	if path == "" {
+		t.Skip("set BW_ROM to an untrimmed Black/White or Black 2/White 2 dump to check extraction")
+	}
+	rom, err := gen5.Identify(path)
+	if err != nil {
+		t.Fatalf("Identify: %v", err)
+	}
+	out := filepath.Join(t.TempDir(), "pack")
+	dex := []int{1, 6, 25, 249, 382, 649}
+	if _, err := modpack.Build(rom, out, modpack.Options{
+		Dex:      dex,
+		Sides:    []string{"front", "back"},
+		Palettes: []string{"normal"},
+	}, false); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	widest, tallest := 0, 0
+	for _, d := range dex {
+		for _, side := range []string{"front", "back"} {
+			sprite, err := rom.Read(d, side, false)
+			if err != nil {
+				t.Fatalf("dex %d %s: %v", d, side, err)
+			}
+			pal, err := sprite.PaletteByName("normal")
+			if err != nil {
+				t.Fatalf("dex %d %s: %v", d, side, err)
+			}
+			timeline, err := sprite.Timeline(pal)
+			if err != nil {
+				t.Fatalf("dex %d %s: %v", d, side, err)
+			}
+			sheetPath := filepath.Join(out, side, itoa(d), "normal.png")
+			file, err := os.Open(sheetPath)
+			if err != nil {
+				t.Fatalf("%s: %v", sheetPath, err)
+			}
+			img, err := png.Decode(file)
+			file.Close()
+			if err != nil {
+				t.Fatalf("%s: %v", sheetPath, err)
+			}
+			size := sheetCell(t, sheetPath, img, len(timeline.Poses))
+			cols := img.Bounds().Dx() / size
+			for i, pose := range timeline.Poses {
+				wantW, wantH, wantInk, ok := canvasInk(pose.Canvas)
+				if !ok {
+					t.Fatalf("%s frame %d: the dump frame is empty", sheetPath, i)
+				}
+				col, row := i%cols, i/cols
+				cell := image.Rect(col*size, row*size, (col+1)*size, (row+1)*size)
+				bounds, hasInk := inkBounds(img, cell)
+				if !hasInk {
+					t.Fatalf("%s frame %d has no ink", sheetPath, i)
+				}
+				if w, h := bounds.Dx(), bounds.Dy(); w != wantW || h != wantH {
+					t.Errorf("%s frame %d ink is %dx%d, want the dump's %dx%d",
+						sheetPath, i, w, h, wantW, wantH)
+				}
+				if got := inkCount(img, cell); got != wantInk {
+					t.Errorf("%s frame %d paints %d pixels, want the dump's %d (the art was resampled)",
+						sheetPath, i, got, wantInk)
+				}
+				if size < wantW || size < wantH {
+					t.Errorf("%s uses %d px cells but frame %d is %dx%d (the art was reduced)",
+						sheetPath, size, i, wantW, wantH)
+				}
+				widest, tallest = max(widest, wantW), max(tallest, wantH)
+			}
+		}
+	}
+	t.Logf("%s: extraction is pixel-exact; largest sampled ink %dx%d", rom.Name(), widest, tallest)
+}
+
+// canvasInk returns the ink size and painted pixel count of one composed frame,
+// trimmed to its opaque pixels the way the pack trims it. Palette index 0 is the
+// transparent entry.
+func canvasInk(c *gen5.Canvas) (w, h, ink int, ok bool) {
+	minX, minY := c.Width, c.Height
+	maxX, maxY := -1, -1
+	for key, index := range c.Pixels {
+		if index == 0 {
+			continue
+		}
+		x, y := key%c.Width, key/c.Width
+		minX, minY = min(minX, x), min(minY, y)
+		maxX, maxY = max(maxX, x), max(maxY, y)
+		ink++
+	}
+	if maxX < 0 {
+		return 0, 0, 0, false
+	}
+	return maxX - minX + 1, maxY - minY + 1, ink, true
+}
+
+// inkCount counts the painted pixels inside one cell of a sheet.
+func inkCount(img image.Image, cell image.Rectangle) int {
+	n := 0
+	for y := cell.Min.Y; y < cell.Max.Y; y++ {
+		for x := cell.Min.X; x < cell.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a != 0 {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // sheetCellOf derives the cell side of one sheet.

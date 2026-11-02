@@ -1,13 +1,13 @@
 -- bwsprites: swaps the Gen 3 battle pictures for animated Black/White sprites.
 --
--- Geometry. The pack keeps facets' ground rule: the animation union is scaled
--- down uniformly when it does not fit (never enlarged), the ink is centred on
--- the column and its lowest row is the cell's last row. The enemy front cell is
--- 64 px; the player's back cell keeps its native size up to 112 px so Black and
--- White backs are not squeezed to 53 px. The mod zeroes the species' y padding
--- and substitutes the anchor correction, and on a fixed-origin engine shifts a
--- wide back cell left by half its extra width. Nothing is scaled at load. See
--- docs/MEASUREMENTS.md and docs/FORMAT.md.
+-- Geometry. The pack keeps facets' ground rule: the ink is centred on the column
+-- and its lowest row is the cell's last row. The cell is the animation's own
+-- size: nothing is enlarged and nothing is scaled down, so an enemy front and
+-- the player's back both keep the pixels Black/White (or Black 2/White 2)
+-- authored. The mod zeroes the species' y padding and substitutes the anchor
+-- correction, and on a fixed-origin engine shifts a wide cell left by half its
+-- extra width. Nothing is scaled at load. See docs/MEASUREMENTS.md and
+-- docs/FORMAT.md.
 local mod = ...
 
 local function loadPart(relative)
@@ -56,6 +56,33 @@ local function engineCentres()
 end
 local CENTRED = engineCentres()
 
+-- The Pokedex card's picture area: the space right of the species stats and
+-- above the flavour-text divider (the card's upper section is rows 19..87).
+-- That screen draws its picture with a bare love.graphics.draw(pic.image, 152,
+-- 24) at the top-left of the card's 64x64 slot; the pack serves the animation's
+-- whole pose window at 1:1 instead, and the draw wrapper below centres it here.
+-- The picture is never scaled and never cut: a window larger than the area
+-- overhangs it, and the placement is clamped to the screen so no pixel is lost.
+local DEX = { x = 124, y = 20, w = 112, h = 68 }
+local SCREEN_W, SCREEN_H = 240, 160
+
+-- placeDex centres a w x h picture in the card's picture area and keeps it
+-- inside the screen: horizontally centred in the area, vertically centred while
+-- it fits and otherwise standing on the divider row, then clamped so the whole
+-- picture stays on screen.
+local function placeDex(w, h)
+  local x = DEX.x + (DEX.w - w) / 2
+  local y
+  if h <= DEX.h then
+    y = DEX.y + (DEX.h - h) / 2
+  else
+    y = DEX.y + DEX.h - h
+  end
+  x = math.min(math.max(x, 0), math.max(0, SCREEN_W - w))
+  y = math.min(math.max(y, 0), math.max(0, SCREEN_H - h))
+  return math.floor(x + 0.5), math.floor(y + 0.5)
+end
+
 -- A fixed-origin engine starts a picture at (x-32, y-32), so a native cell
 -- wider than 64 would sit right of the battler and PicCoords has no x to correct.
 -- Wrap the one draw call the battle uses: when one of our pictures is drawn at
@@ -73,7 +100,7 @@ local CENTRED = engineCentres()
 -- slide would start fully visible. When the engine is moving the battler, only
 -- the centring shift applies and the engine keeps control of the position.
 local picMark = setmetatable({}, { __mode = "k" })
-local SCENE_W = 240
+local SCENE_W = SCREEN_W
 local battleAnim
 local function presentOffset(side)
   if battleAnim == nil then
@@ -85,40 +112,52 @@ local function presentOffset(side)
   if not ok or type(p) ~= "table" then return 0 end
   return tonumber(p.ox) or 0
 end
-if not CENTRED then
-  local engineDraw = love.graphics.draw
-  love.graphics.draw = function(drawable, x, y, r, sx, sy, ox, oy, kx, ky)
-    if ox == 32 and oy == 32 then
-      local mark = type(drawable) == "userdata" and picMark[drawable]
-      local width = mark and mark.w
-      if width and width > Pack.BOX then
-        local scale = sx or 1
-        local shift = (Pack.BOX - width) * scale / 2
-        local moving = presentOffset(mark.side) ~= 0
-        if mark.side == "back" then
-          if not moving then
-            -- Cell left with only the centring shift; leave the last pixel free.
-            local left = x - (width * scale) / 2
-            shift = shift - math.min((width - Pack.BOX) * scale / 2,
-              math.max(0, left - 1))
-          end
-        elseif not moving then
-          -- A native front wider than the enemy base's room is slid left until
-          -- its right edge is the scene's last column; never let it leave the
-          -- left edge either.
-          local left = x - 32 * scale + shift
-          local right = left + width * scale
-          if right > SCENE_W - 1 then
-            shift = shift - (right - (SCENE_W - 1))
-            left = x - 32 * scale + shift
-          end
-          if left < 1 then shift = shift + (1 - left) end
+local engineDraw = love.graphics.draw
+love.graphics.draw = function(drawable, x, y, r, sx, sy, ox, oy, kx, ky)
+  if type(drawable) == "userdata" then
+    local mark = picMark[drawable]
+    if mark and mark.dex then
+      -- The dex card's picture area is the pack's own placement. The size
+      -- comparison on the dex's second page draws the same picture around its
+      -- 64x64 centre (origin 32,32) beside the trainer silhouette, so that one
+      -- call gets a 64x64 fit instead and keeps the cartridge's proportions.
+      if ox == 32 and oy == 32 then
+        local alt = mark.alt and mark.alt()
+        if alt and alt.image then
+          return engineDraw(alt.image, x, y, r, sx, sy, ox, oy, kx, ky)
         end
-        return engineDraw(drawable, x + shift, y, r, sx, sy, ox, oy, kx, ky)
+      elseif ox == nil and oy == nil then
+        local px, py = placeDex(mark.w or Pack.BOX, mark.h or Pack.BOX)
+        return engineDraw(drawable, px, py, r, sx, sy, ox, oy, kx, ky)
       end
+    elseif mark and not CENTRED and ox == 32 and oy == 32 and (mark.w or 0) > Pack.BOX then
+      local width = mark.w
+      local scale = sx or 1
+      local shift = (Pack.BOX - width) * scale / 2
+      local moving = presentOffset(mark.side) ~= 0
+      if mark.side == "back" then
+        if not moving then
+          -- Cell left with only the centring shift; leave the last pixel free.
+          local left = x - (width * scale) / 2
+          shift = shift - math.min((width - Pack.BOX) * scale / 2,
+            math.max(0, left - 1))
+        end
+      elseif not moving then
+        -- A native front wider than the enemy base's room is slid left until
+        -- its right edge is the scene's last column; never let it leave the
+        -- left edge either.
+        local left = x - 32 * scale + shift
+        local right = left + width * scale
+        if right > SCENE_W - 1 then
+          shift = shift - (right - (SCENE_W - 1))
+          left = x - 32 * scale + shift
+        end
+        if left < 1 then shift = shift + (1 - left) end
+      end
+      return engineDraw(drawable, x + shift, y, r, sx, sy, ox, oy, kx, ky)
     end
-    return engineDraw(drawable, x, y, r, sx, sy, ox, oy, kx, ky)
   end
+  return engineDraw(drawable, x, y, r, sx, sy, ox, oy, kx, ky)
 end
 
 local runtime = Pack.newRuntime(index, {
@@ -209,7 +248,6 @@ end
 -- (64-Size)/2 on a centring engine or (64-Size) on the fixed origin. A tall
 -- enemy cell is slid down until its ink top stays on screen; a tall own back is
 -- moved below the enemy healthbox (OWN_TOP_CLEAR).
-local SCREEN_H = 160
 -- The single battle's enemy base row (ui.lua ENEMY_MON). A cell no taller than
 -- the 72 px slot between row 0 and the enemy ground row (71) needs no clamp;
 -- this value only decides where a legacy taller cell stops at the scene top.
@@ -427,10 +465,11 @@ if okM and type(MonAnim) == "table" and type(MonAnim.framePic) == "function" the
   end
 end
 
--- The Pokedex asks for its own front picture (dexFrontPic) and lays it out in
--- an exact 64x64 box with the top-left corner as the origin. A native cell
--- would spill over the surrounding chrome, so hand that one screen the same
--- animated pose fitted into 64x64; battle pictures keep their native cell.
+-- The Pokedex asks for its own front picture (dexFrontPic) and lays it out at
+-- (152,24) in the card's 64x64 slot. Hand it the animation's pose window at its
+-- own size and let the draw wrapper centre it in the card's picture area; battle
+-- pictures keep their native cell. A caller that names another kind (the credits
+-- roll passes "credits") gets a 64x64 fit for its own grid.
 if type(Pokemon.dexFrontPic) == "function" then
   local original = Pokemon.dexFrontPic
   local function dexShiny(personality)
@@ -438,7 +477,7 @@ if type(Pokemon.dexFrontPic) == "function" then
     local ok, shiny = pcall(Pokemon.isShiny, { personality = p, otId = 8, otSecretId = 0 })
     return ok and shiny == true
   end
-  Pokemon.dexFrontPic = function(species, personality)
+  Pokemon.dexFrontPic = function(species, personality, kind)
     if sideEnabled("front") then
       local sp = species
       if type(Pokemon.picSpecies) == "function" then
@@ -448,11 +487,27 @@ if type(Pokemon.dexFrontPic) == "function" then
       local nat = national(sp)
       if nat and runtime:serves(nat, "front") then
         local now = love.timer and love.timer.getTime and love.timer.getTime() or os.clock()
-        local entry = runtime:dexFrame(nat, "front", dexShiny(personality), now)
-        if entry then return entry end
+        local shiny = dexShiny(personality)
+        if kind ~= nil then
+          -- The credits roll draws its own 64x64 slots, so it keeps that box.
+          local boxed = runtime:boxFrame(nat, "front", shiny, now, Pack.BOX, Pack.BOX)
+          if boxed then return boxed end
+        else
+          local entry = runtime:dexFrame(nat, "front", shiny, now)
+          if entry then
+            -- The draw wrapper centres this picture in the card's picture area;
+            -- page 2's size comparison can still ask for a 64x64 fit of the
+            -- same pose, so the mark carries a way to make one.
+            picMark[entry.image] = { dex = true, w = entry.w, h = entry.h,
+              alt = function()
+                return runtime:boxFrame(nat, "front", shiny, now, Pack.BOX, Pack.BOX)
+              end }
+            return entry
+          end
+        end
       end
     end
-    return original(species, personality)
+    return original(species, personality, kind)
   end
 end
 

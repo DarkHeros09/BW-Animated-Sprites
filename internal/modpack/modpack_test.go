@@ -76,14 +76,14 @@ func TestIndexLuaShape(t *testing.T) {
 	entry := &Entry{Dex: 25, Front: &View{
 		Frames: 3, Size: 108, Columns: 2, InkW: 105, InkH: 88,
 		Durations: []int{54, 12, 6}, LoopStart: 1,
-		Normal: "front/25/normal.png", Shiny: "front/25/shiny.png", Scaled: true,
+		Normal: "front/25/normal.png", Shiny: "front/25/shiny.png",
 	}, FrontFemale: &View{
 		Frames: 2, Size: 64, Columns: 1, InkW: 40, InkH: 32,
 		Durations: []int{5, 15}, LoopStart: 0,
 		Normal: "front/female/25/normal.png",
 	}}
 	index := &indexFile{
-		Source:  Source{Path: "Pokemon - Black.nds", Code: "IRBO", Name: "Pokemon Black", Digest: "sha256:00"},
+		Source:  Source{Path: "Pokemon - Black.nds", Code: "IRBO", Name: "Pokemon Black", Importer: "gen5_bw", Digest: "sha256:00"},
 		Entries: map[int]*Entry{25: entry},
 	}
 	text := index.lua()

@@ -19,12 +19,15 @@ It has three parts and two shared formats:
   [docs/MOD.md](docs/MOD.md).
 
 The previewer's pack format is [docs/FORMAT.md](docs/FORMAT.md); the mod pack
-keeps the same ground rule and centres every frame, with enemy fronts at native
-Black/White size (up to 160×112 px, never resampled) and player backs up to
-112 px, described in the same file. A female battler gets the distinct female
-graphic, front and back, when the dump has one. The Pokedex plays the animation
-inside one fixed 64×64 fit sized by its largest pose, so it animates without
-losing the corrected dex size. The measurement rules, and the places the
+keeps the same ground rule and centres every frame in a cell the art's own size,
+so nothing is resampled on either side: every front and back keeps the pixels
+Black/White or Black 2/White 2 authored, and a cell can be larger than the
+battle's 64 px slot. A female battler gets the distinct female graphic, front
+and back, when the dump has one. The Pokedex plays the animation in the card's
+picture area at the art's native size, centred there and kept wholly on screen,
+so no pose is ever cut off; a window larger than the area overhangs the card
+instead of being reduced. The measurement
+rules, and the places the
 pipeline differs from a single static picture, are in
 [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md). Provenance and licences are in
 [docs/PROVENANCE.md](docs/PROVENANCE.md).
@@ -92,9 +95,12 @@ love build/pack
 ```
 
 - Supported dumps: unsupported game codes and trimmed dumps are rejected by name.
-  Black/White only (`IRA*`/`IRB*`); Black 2/White 2 are **not** supported — the
-  archive member count and the animation banks differ and were never verified
-  here, so the tool refuses rather than guessing.
+  Black/White (`IRA*`/`IRB*`, an untrimmed 256 MiB dump) and Black 2/White 2
+  (`IRD*`/`IRE*`, 512 MiB) are read through one decoder: each pair keeps the same
+  sprite archive path, the same twenty members per species and the same resource
+  order, with Black 2/White 2's extra form graphics after national dex 649.
+  Every member is still validated as it is read, so a dump that differs fails
+  with the member at fault instead of producing wrong art.
 - The dump is opened read-only. The tests assert the file's size and mtime are
   unchanged after an import.
 - `-frame 0` (default) sizes each cell to its own content, never below the facets
@@ -112,6 +118,11 @@ the data, then let the tool place it:
 go run ./cmd/bwsprites modpack -rom "BLACK.nds" -out build/modpack
 go run ./cmd/bwsprites install -pack build/modpack -identity pokemon-love2d
 ```
+
+The same commands read a Black 2/White 2 dump (`IRD*`/`IRE*`, an untrimmed
+512 MiB image); the pack then records `importer = "gen5_bw2"` and the mod reads
+it unchanged. One mod is installed at a time, so a Black 2 build replaces a
+Black build's art in the same folder.
 
 `-identity` is the LÖVE save folder (`POKEPORT_IDENTITY`, default
 `pokemon-love2d`); `-mods DIR` overrides the whole path and `-force` replaces an
@@ -191,14 +202,14 @@ bwsprites demo   -out DIR [-force]
 Frames are placed with the facets ground rule: horizontally centred, lowest
 opaque row on the species' ground row, top-left origin, y down. The previewer
 pack can auto-fit a cell past 64 px (the synthetic wide demo entry is 88 px).
-The mod uses the same rule with the host's slots: an enemy front keeps its
-native Black/White pixels in a square cell up to 160 px wide and 112 px tall
-(no front in a Black/White dump is larger), so Pidgeotto stays sharp at 104 px
-and Lugia keeps its 153 px width; nothing is enlarged, and Pikachu stays 64 px.
+The mod uses the same rule with the host's slots: a view keeps its own native
+pixels in a square cell sized by the animation's union, so Pidgeotto stays sharp
+at 104 px and Lugia keeps its 153 px width; nothing is enlarged and nothing is
+reduced, and Pikachu stays 64 px.
 A front taller than the 72 px gap above the enemy ground row is anchored at the
 scene top and runs behind the battle menu; a wide front is slid left to stay
-inside the 240 px scene. The player's back keeps its native size up to 112 px,
-so Charizard is not squeezed to 53 px; a tall back is moved down until its ink
+inside the 240 px scene. The player's back keeps its native size too, so
+Charizard is not squeezed to 53 px; a tall back is moved down until its ink
 starts below the enemy HP box, so its top is never clipped even though its feet
 may run behind the battle menu. Because
 a Gen 5 idle animation is a composite whose frames already carry positions in one
@@ -230,6 +241,9 @@ go test ./...                     # unit tests; the LÖVE end-to-end tests skip 
 BW_ROM=/path/to/black.nds go test ./internal/gen5 -run TestRealROM   # needs your dump
 BW_ROM=/path/to/black.nds go test ./internal/modpack -run TestRealROMModPack
 ```
+
+`BW_ROM` may point at either pair: the tests read the game code and check the
+size and art for that dump.
 
 What they cover: NDS/NARC/LZ11 container decoding and its rejection paths; NCGR/
 NCLR/NCER/NANR/NCMR parsing; playback timing and run merging; the measurement
@@ -271,7 +285,7 @@ mod pack's PNGs back and checks every animation's ink centre and ground row.
 | symptom | cause / fix |
 | --- | --- |
 | `is N bytes, want an untrimmed 268435456 byte dump` | trimmed ROM; use an untrimmed 256 MiB dump |
-| `game code "..." is not Black/White` | wrong game (Black 2/White 2 are unsupported) |
+| `game code "..." is not a supported game` | wrong game; this reads Black/White and Black 2/White 2 |
 | `sprite archive /a/0/0/4: ...` | the dump is damaged, or its archive layout differs from the supported revision |
 | `has no front record for slot N` | the coords file has no picture for that slot, or `-dex` is a national dex number where an internal slot is expected; pass `-ground` to use one row |
 | `no bundled table addresses` | FireRed/LeafGreen: supply `-front-base -back-base -count -stride` |
@@ -290,20 +304,21 @@ mod pack's PNGs back and checks every animation's ink centre and ground row.
   checksums and free-space layout. None of that is implemented, and no patch
   format is invented here.
 - **The mod is battle pictures plus the Pokedex.** Front and back, normal and
-  shiny, one idle animation each; the Pokedex plays that same animation inside a
-  fixed 64×64 window. Distinct female art is used for a female battler, front
+  shiny, one idle animation each; the Pokedex plays that same animation at its
+  native size in the card's picture area. Distinct female art is used for a
+  female battler, front
   and back; there is no form-specific art (see
   [docs/MOD.md](docs/MOD.md#limits-stated-plainly)).
-- **Black/White only.** Black 2/White 2 are out of scope: their archive and
-  animation layout was never verified here.
+- **Black/White and Black 2/White 2.** Both pairs are read (`IRA*`/`IRB*` and
+  `IRD*`/`IRE*`); other games and trimmed dumps are refused by name.
 - **Idle animations only.** Each sprite exports its idle/loop animation; battles
   and other animation banks are not exported.
 - **The battle scene stays 240×160.** Gen 3's display size is fixed
   (`src/core/game3/display.lua:9-10`) and the wide/fill battle layout is a Gen 1/2
   feature, so no mod can enlarge the scene for portrait screens. Enemy fronts
-  keep their native size up to 160×112 px (tall ones run behind the battle UI,
-  never clipped at the top; wide ones are slid left) and the player's back keeps
-  up to 112 px, re-centred on engines with the fixed (32,32) draw origin and
+  keep their native size (tall ones run behind the battle UI, never clipped at
+  the top; wide ones are slid left) and the player's back keeps its own size,
+  re-centred on engines with the fixed (32,32) draw origin and
   moved below the enemy HP box when it would otherwise be clipped; a wider scene
   is engine work, not mod work.
 - **The previewer is a viewer, not a game.** It draws one entry at a time at an

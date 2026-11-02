@@ -295,6 +295,71 @@ func TestFitHostOnePixelBox(t *testing.T) {
 	}
 }
 
+// TestFitNativeKeepsEveryViewAtItsOwnSize is the no-downscaling rule: a view
+// whose union is larger than any battle slot still gets a cell of its own size,
+// so nothing is resampled. The union is centred with its feet on the last row.
+func TestFitNativeKeepsEveryViewAtItsOwnSize(t *testing.T) {
+	for _, box := range []Rect{
+		{MinX: 0, MinY: 0, MaxX: 153, MaxY: 104},
+		{MinX: 0, MinY: 0, MaxX: 120, MaxY: 120},
+		{MinX: 0, MinY: 0, MaxX: 40, MaxY: 128},
+	} {
+		fit, err := FitNative(hostFrames(box))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := roundUp4(max(HostBox, box.Width(), box.Height()))
+		if fit.Scaled || fit.Size != want || fit.InkW != box.Width() || fit.InkH != box.Height() {
+			t.Fatalf("%v: cell %d ink %dx%d scaled %v, want %d with %dx%d ink and no scaling",
+				box, fit.Size, fit.InkW, fit.InkH, fit.Scaled, want, box.Width(), box.Height())
+		}
+		got := fit.Frames[0]
+		if got.X+got.W > fit.Size || got.Y+got.H != fit.Size {
+			t.Fatalf("%v: placed %+v in a %d px cell", box, got, fit.Size)
+		}
+	}
+}
+
+// TestFitNativeKeepsTheAnimationMotion checks that a native cell still carries
+// the per-frame offset, so a bob or a sway keeps moving.
+func TestFitNativeKeepsTheAnimationMotion(t *testing.T) {
+	fit, err := FitNative(hostFrames(
+		Rect{MinX: 0, MinY: 0, MaxX: 60, MaxY: 90},
+		Rect{MinX: 0, MinY: 30, MaxX: 60, MaxY: 90},
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := fit.Frames[1].Y - fit.Frames[0].Y; d != 30 {
+		t.Fatalf("frame tops %d and %d do not keep the 30 px lift",
+			fit.Frames[0].Y, fit.Frames[1].Y)
+	}
+	// The 90 px union rounds up to a 92 px cell, so the pair sits two rows down.
+	if fit.Size != 92 || fit.Frames[0].Y != 2 || fit.Frames[1].Y != 32 {
+		t.Fatalf("placements %+v // %+v in a %d px cell, want tops 2 and 32",
+			fit.Frames[0], fit.Frames[1], fit.Size)
+	}
+}
+
+// TestFitNativeAcceptsSmallArtAndRejectsOverlargeArt keeps the two ends of the
+// scale honest: small art stays in a 64 px cell, and art past MaxCell is an
+// error rather than a silent shrink.
+func TestFitNativeAcceptsSmallArtAndRejectsOverlargeArt(t *testing.T) {
+	fit, err := FitNative(hostFrames(Rect{MinX: 0, MinY: 0, MaxX: 51, MaxY: 46}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fit.Size != HostBox || fit.InkW != 51 || fit.InkH != 46 {
+		t.Fatalf("cell %d ink %dx%d, want 64 with 51x46 ink", fit.Size, fit.InkW, fit.InkH)
+	}
+	if _, err := FitNative(nil); err == nil {
+		t.Fatal("an empty animation was accepted")
+	}
+	if _, err := FitNative(hostFrames(Rect{MinX: 0, MinY: 0, MaxX: 300, MaxY: 40})); err == nil {
+		t.Fatal("art past MaxCell was accepted instead of reported")
+	}
+}
+
 func abs(n int) int {
 	if n < 0 {
 		return -n

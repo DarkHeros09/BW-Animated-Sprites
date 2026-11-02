@@ -17,23 +17,26 @@ engine's own mod loader.
 | `PicCoords.front` / `PicCoords.back` | zeroes each served species' y padding so every frame's lowest ink row lands on the cartridge's own ground row; restores the cartridge table when a side is switched to DEFAULT |
 | `ui.options.rows` (and `OptionRows.build`) | adds **MY POKEMON** and **OPPONENT** switches to the in-game OPTION menu, or one **BW SPRITES** group when the menu supports groups |
 
-### Cell size: native Black/White art
+### Cell size: the art's own, never resampled
 
 The **ground rule is facets'** (`mons.lua`: lowest ink row on the ground line,
-horizontally centred). The **size is Black/White's own**, because facets only
-accepts 64×64 static art: fronts keep native pixels up to the 160×112 slot, and
-backs up to 112×112. Nothing is enlarged, no opponent front is resampled, and
-Pikachu stays 64 px / 46 px of ink while Pidgeotto is 104 px and Lugia 156 px.
+horizontally centred). The **size is the animation's own**: the cell is the
+union's larger side rounded up to four, so nothing is enlarged and nothing is
+reduced on either side. Facets only accepts 64×64 static art, so it stops at 64;
+this pack keeps the pixels the dump contains instead. Pikachu stays 64 px / 46 px
+of ink while Pidgeotto is 104 px and Lugia 156 px, on the enemy side and on the
+player's.
 
-- **Enemy front: one square cell from 64 to 160 px.** A front whose ink is taller
-  than the 72 px gap above the enemy ground row is anchored with its ink top on
-  scene row 0 and its feet lower, behind the battle UI. The user allowed the
-  bottom to be covered but not the top. A front wider than the room right of the
-  enemy base is slid left by the draw wrapper until it fits the 240 px scene.
-- **Player back: one square cell from 64 to 112 px.** The player's ground row is
-  low, so a native back fits (Charizard is 100 px, not a squeezed 53 px). A tall
-  back whose ink would start above scene row 46 — the bottom of the enemy HP box
-  in a single battle — is shifted down until its ink top clears that box. Only the
+- **Enemy front: one square cell from 64 px up, as large as the art needs.** A
+  front whose ink is taller than the 72 px gap above the enemy ground row is
+  anchored with its ink top on scene row 0 and its feet lower, behind the battle
+  UI. The user allowed the bottom to be covered but not the top. A front wider
+  than the room right of the enemy base is slid left by the draw wrapper until it
+  fits the 240 px scene.
+- **Player back: one square cell from 64 px up.** The player's ground row is low,
+  so a native back fits (Charizard is 100 px, not a squeezed 53 px). A tall back
+  whose ink would start above scene row 46 — the bottom of the enemy HP box in a
+  single battle — is shifted down until its ink top clears that box. Only the
   position moves, never the cell size; the feet may run behind the battle menu,
   which the user preferred over a clipped top. A 64 px back is untouched.
 - **Female views:** when the dump has a distinct female graphic, the pack also
@@ -44,20 +47,23 @@ Pikachu stays 64 px / 46 px of ink while Pidgeotto is 104 px and Lugia 156 px.
   builds wrap `Pokemon.backPic` with a three-argument shim that drops the
   battler, so the mod also remembers the battler's gender across the nested call
   from `Ui.sidePic`, the battler draw seam that still has it.
-- **Pokedex:** animated inside one fixed window. The pack writes, per view, the
-  largest painted pose's content box (`<side>Dex = {x,y,w,h}`). The runtime cuts
-  that same window out of whichever frame is playing and fits it into the
-  Pokedex's 64×64 window with nearest sampling, never enlarging. Scale and
-  position stay fixed, so the idle animation plays without jitter and the
-  corrected size is kept: Charizard peaks at 62×64, Pikachu stays 49×43, Lugia's
-  wings fit 64×38. Battle pictures never pass through this path.
+- **Pokedex:** animated at the art's native size. The pack writes, per view, the
+  box enclosing every pose (`<side>Dex = {x,y,w,h}`). The runtime crops that
+  window out of whichever frame is playing at 1:1 — no resampling — so Pikachu's
+  dex picture keeps its own 51×46 and a Lugia keeps 153×91. The draw wrapper
+  centres the picture in the card's picture area (the 112×68 space right of the
+  species stats and above the flavour-text divider) and clamps it to the screen,
+  so a window larger than the area overhangs the card instead of being reduced
+  and no pose is ever cut off. Window and position are fixed, so the idle plays
+  without jitter. Battle pictures never pass through this path.
 
 Inside every cell the animation's union is centred with its lowest ink row on the
 cell's last row, and each frame keeps its per-frame offset inside the union so
 the animation still moves. A wide front therefore has transparent rows above
-its ink; the runtime positions the cell bottom, not the ink top. The Pokedex
-still needs a 64×64 picture, so that path fits the fixed largest-pose window,
-taken from the current frame, into the window.
+its ink; the runtime positions the cell bottom, not the ink top. The Pokedex is
+the one screen with its own geometry: the runtime crops the pose window, taken
+from the current frame, at 1:1, and the draw wrapper centres it in the card's
+picture area.
 
 The two engine anchors draw a native cell differently:
 
@@ -75,9 +81,9 @@ the anchor correction: `64 - size` on the fixed origin, `floor((64 - size) / 2)`
 when centred, with an extra shift for a front whose ink top would leave the
 scene. With the pack's ink bottom on row `size - 1`, that puts every species'
 feet on the cartridge's ground row, independent of the cell size. The Pokedex
-path takes its fixed largest-pose window from the current frame and fits that
-box into 64×64 before drawing, so it animates without shrinking with a wing-down
-frame.
+path takes its fixed pose window from the current frame at 1:1 and the draw
+wrapper centres that box in the card's 112×68 picture area, so it animates
+without shrinking with a wing-down frame and without cutting a pose off.
 
 The draw site is `src/core/game3/battle/ui.lua:2299`:
 `love.graphics.draw(entry.image, cx, cy, rot, sx, sy, 32, 32)`. See
@@ -87,8 +93,10 @@ The draw site is `src/core/game3/battle/ui.lua:2299`:
 ## Build, install, enable
 
 ```sh
-# 1. Data: every species, both sides, normal and shiny, native-capped cells.
+# 1. Data: every species, both sides, normal and shiny, native cells.
 go run ./cmd/bwsprites modpack -rom "Black.nds" -out build/modpack
+#    Black 2/White 2 work the same way: pass that dump instead. The pack records
+#    which game pair it came from and the mod reads either unchanged.
 
 # 2a. Install straight into a LÖVE save identity (creates <save>/mods/bwsprites):
 go run ./cmd/bwsprites install -pack build/modpack -identity pokemon-love2d
@@ -124,7 +132,7 @@ engine records this as `modsByVersion.<game>["bwsprites"] = true` in
 
 If that line is missing the mod did not load; if it reports 0 species the pack is
 missing from the installed folder. `native cells` in the log means "not
-compatibility-scaled"; front cells are 64..160 px, back cells 64..112 px, and
+compatibility-scaled"; cells are 64..256 px, the art's own size, and
 the count in parentheses is the number of extra female views.
 
 ## Switching back to cartridge art
@@ -192,8 +200,8 @@ BW_ROM=/path/to/black.nds go test ./internal/modpack -run TestRealROMModPack
 ```
 
 `TestRealROMModPack` builds a pack for dex 1, 3, 6, 25, 150, 249, 382 and 649
-and decodes the PNGs back: every sheet's cell side is within its side's cap (front
-160 wide / 112 tall, back 112), Charizard's front is its native 92 px, its back at
+and decodes the PNGs back: every sheet's cell side is within the 256 px bound and
+is the art's own size, Charizard's front is its native 92 px, its back at
 least 96 px, Pikachu's front stays 64 px, Lugia's is 156 px and Rayquaza's 100 px,
 every frame has ink inside its cell, the animation union is centred and its lowest
 ink row is the cell's last row, female sheets exist where the dump has them, and
@@ -244,7 +252,8 @@ back, and a frame change between two captures, and writes the screenshots under
   (EXPORT_VERSION `1.1.0`) writes `asset_packs/gen5_bw/battle_sprites`, and the
   example provider `mods/examples/gen5_battle_sprites` hands out frames up to
   256×256 with the consumer choosing the display scale. Black is the tested dump;
-  White and other regions are unverified, **Black 2/White 2 are rejected**, and
+  White and other regions are unverified, the launcher's importer rejects Black
+  2/White 2, and
   the importer alone does not draw anything in battle — a renderer mod must
   consume it. This mod is that renderer and it does not depend on the importer:
   it decodes the same NARC/NNS data in Go offline, so no launcher import is
@@ -269,16 +278,17 @@ back, and a frame change between two captures, and writes the screenshots under
   13,032 back male poses, plus 96 female pairs (30,807 frames in total; only dex
   273, 299 and 546 genuinely have one frame), so nothing is frozen or skipped.
   NMAR durations are hold times in 60 Hz ticks and are used as-is.
-- **Native sizes, not facets' 64x64 cap.** An enemy front is a square cell up to
-  160 px wide and 112 tall; every Black/White front fits, so none is resampled and
-  a bird that moves its wings no longer shrinks to fit a union. A back cell is up
-  to 112 px. Two back views in the sequence fall just past 112 and are uniformly
-  reduced; everything else keeps native pixels. A front taller than the 72 px
-  slot is anchored at the scene top and extends behind the battle UI.
-- **Pokedex.** The Pokedex draws into a fixed 64×64 window; the runtime fits the
-  largest pose's window from the current frame into it without enlarging, so the
-  idle animation plays at the largest size the window allows. The battle picture
-  is the only path that keeps the native back size.
+- **Native sizes, not facets' 64x64 cap.** A cell is the animation's union, so no
+  view is resampled and a bird that moves its wings no longer shrinks to fit a
+  union; the 256 px bound only catches a corrupt measurement. A front taller than
+  the 72 px slot is anchored at the scene top and extends behind the battle UI.
+- **Pokedex.** The Pokedex draws its picture at native size, centred in the
+  card's picture area (112×68, larger than the 64×64 slot the cartridge art
+  used): the runtime crops the pose window from the current frame at 1:1 and the
+  draw wrapper keeps the whole picture on screen, so a window bigger than the
+  area overhangs the card instead of being reduced and no pose is cut off. Page
+  2's size comparison gets a 64×64 fit instead, so the trainer comparison keeps
+  the cartridge's proportions.
 - **Sheets are grids.** The writer lays each view out in the fewest columns that
   keep the sheet within 4096 px (the GLES2 texture floor). Most views are a
   single column: Pikachu's 27-frame front is 64x1728, Charizard's 40-frame 92 px

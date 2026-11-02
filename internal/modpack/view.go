@@ -38,27 +38,28 @@ func sheetColumns(frames, size int) (int, error) {
 	return min(cols, frames), nil
 }
 
-// dexBox is the Pokedex's fixed crop window: the largest painted pose's box in
-// cell coordinates. The window never moves, so every frame plays at the size
-// the biggest pose got and the dex picture keeps its corrected dimensions; a
-// pose that swings past the window is cropped rather than resizing the rest.
+// dexBox is the Pokedex's crop window: the box that encloses every painted pose
+// of the animation, in cell coordinates. One window for the whole cycle means
+// the dex picture keeps one scale and one position while the idle plays, and a
+// wing-down or swaying pose stays inside it instead of being cut off.
 func dexBox(frames []measure.HostFrame) (x, y, w, h int) {
 	if len(frames) == 0 {
 		return 0, 0, 0, 0
 	}
-	best := frames[0]
+	minX, minY := frames[0].X, frames[0].Y
+	maxX, maxY := frames[0].X+frames[0].W, frames[0].Y+frames[0].H
 	for _, f := range frames[1:] {
-		if f.W*f.H > best.W*best.H {
-			best = f
-		}
+		minX, minY = min(minX, f.X), min(minY, f.Y)
+		maxX, maxY = max(maxX, f.X+f.W), max(maxY, f.Y+f.H)
 	}
-	return best.X, best.Y, best.W, best.H
+	return minX, minY, maxX - minX, maxY - minY
 }
 
-// render composes every frame of a sprite's idle animation, fits it into one
-// native cell and paints the frames into a grid sheet. maxW and maxH are the
-// side's caps (front: HostFrontWidth x HostFrontMax; back: HostBackMax both).
-func render(s *gen5.Sprite, palette string, maxW, maxH, targetH int) (*rendered, error) {
+// render composes every frame of a sprite's idle animation, places it in one
+// native cell and paints the frames into a grid sheet. The cell is the
+// animation's own union: nothing is scaled up and nothing is scaled down, so a
+// view keeps every pixel the dump contains.
+func render(s *gen5.Sprite, palette string) (*rendered, error) {
 	pal, err := s.PaletteByName(palette)
 	if err != nil {
 		return nil, err
@@ -82,7 +83,7 @@ func render(s *gen5.Sprite, palette string, maxW, maxH, targetH int) (*rendered,
 		}
 		durations[i] = pose.Duration
 	}
-	fit, err := measure.FitHost(boxes, maxW, maxH, targetH)
+	fit, err := measure.FitNative(boxes)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +109,6 @@ func render(s *gen5.Sprite, palette string, maxW, maxH, targetH int) (*rendered,
 			DexY:      dexY,
 			DexW:      dexW,
 			DexH:      dexH,
-			Scaled:    fit.Scaled,
 			Durations: durations,
 			LoopStart: timeline.LoopStart,
 		},

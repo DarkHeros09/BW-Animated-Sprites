@@ -35,10 +35,11 @@ func TestPaintUsesTheFittedRow(t *testing.T) {
 	}
 }
 
-// TestDexBoxPicksTheLargestPoseWindow keeps the dex picture at the size the
-// largest pose earned. The window is fixed while the animation plays inside it,
-// so a wing-down frame cannot shrink or swell the picture.
-func TestDexBoxPicksTheLargestPoseWindow(t *testing.T) {
+// TestDexBoxEnclosesTheWholeAnimation keeps the dex window on the animation's
+// whole union: the picture keeps one scale while it plays, and a pose that
+// swings to the edge of the animation is inside the window instead of being cut
+// off by a window sized for one frame.
+func TestDexBoxEnclosesTheWholeAnimation(t *testing.T) {
 	frames := []measure.HostFrame{
 		{X: 1, Y: 2, W: 40, H: 40},
 		{X: 5, Y: 1, W: 70, H: 30},
@@ -46,8 +47,8 @@ func TestDexBoxPicksTheLargestPoseWindow(t *testing.T) {
 		{X: 77, Y: 9, W: 62, H: 64},
 	}
 	x, y, w, h := dexBox(frames)
-	if x != 80 || y != 10 || w != 62 || h != 64 {
-		t.Fatalf("dex box = %d,%d %dx%d, want 80,10 62x64 (the first largest pose)", x, y, w, h)
+	if x != 1 || y != 1 || w != 141 || h != 73 {
+		t.Fatalf("dex box = %d,%d %dx%d, want 1,1 141x73 (every pose)", x, y, w, h)
 	}
 	if x, y, w, h := dexBox(nil); x != 0 || y != 0 || w != 0 || h != 0 {
 		t.Fatalf("dex box of nothing = %d,%d %dx%d, want empty", x, y, w, h)

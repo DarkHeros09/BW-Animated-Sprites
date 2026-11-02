@@ -48,6 +48,66 @@ func TestIdentifyRejectsForeignDumps(t *testing.T) {
 }
 
 // TestRealROM round-trips the importer against a dump the user supplies, since
+// TestIdentifyChecksEachGamePair covers the two supported pairs: Black 2/White 2
+// dumps are 512 MiB and carry their own game codes, so a 256 MiB file with a
+// BW2 code (or the other way round) is reported as the wrong size for that
+// game instead of being parsed as something else.
+func TestIdentifyChecksEachGamePair(t *testing.T) {
+	cases := []struct {
+		name, code string
+		size       int
+		want       string
+	}{
+		{"a trimmed BW2 dump", "IREO", dumpSize, "536870912"},
+		{"a BW dump under a BW2 code", "IRD0", dumpSize, "536870912"},
+		{"a BW2 dump under a BW code", "IRBO", 536870912, "268435456"},
+		{"an unrelated size", "IRBO", 300 << 20, "268435456"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "dump.nds")
+			f, err := os.Create(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Truncate(int64(tc.size)); err != nil {
+				f.Close()
+				t.Skipf("cannot make a sparse %d byte file here: %v", tc.size, err)
+			}
+			if _, err := f.WriteAt([]byte(tc.code), 0x0C); err != nil {
+				f.Close()
+				t.Fatal(err)
+			}
+			f.Close()
+			_, err = gen5.Identify(path)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Identify(%s, %d bytes): %v, want a %s message", tc.code, tc.size, err, tc.want)
+			}
+		})
+	}
+
+	// A sparse image is the right size and code but has no filesystem, so the
+	// failure has to come from the container, not from a rejected game code.
+	path := filepath.Join(t.TempDir(), "bw2.nds")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(536870912); err != nil {
+		f.Close()
+		t.Skipf("cannot make a sparse 512 MiB file here: %v", err)
+	}
+	if _, err := f.WriteAt([]byte("IREO"), 0x0C); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	f.Close()
+	if _, err := gen5.Identify(path); err == nil || strings.Contains(err.Error(), "supported game") {
+		t.Fatalf("a Black 2 code was rejected as unsupported: %v", err)
+	}
+}
+
+// TestRealROM round-trips the importer against a dump the user supplies, since
 // the sprite data itself can never ship with this project. Set BW_ROM to an
 // untrimmed Black or White dump to run it:
 //
@@ -65,8 +125,12 @@ func TestRealROM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Identify: %v", err)
 	}
-	if rom.Size() != dumpSize {
-		t.Fatalf("size = %d, want %d", rom.Size(), dumpSize)
+	wantSize := gen5.UntrimmedSize
+	if rom.Family() == "bw2" {
+		wantSize = gen5.UntrimmedSizeBW2
+	}
+	if rom.Size() != wantSize {
+		t.Fatalf("%s size = %d, want %d", rom.Family(), rom.Size(), wantSize)
 	}
 	t.Logf("dump: %s code %s", rom.Name(), rom.Code())
 

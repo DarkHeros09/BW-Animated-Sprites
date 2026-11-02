@@ -35,21 +35,28 @@ const HostBackMax = 112
 // per-species y offset, so the feet land on the cartridge's shared ground row.
 const HostPad = 0
 
+// MaxCell is the largest square cell the mod pack writes. FitNative never
+// reduces art, so the cell is the animation's own size; this bound only stops a
+// corrupt measurement from asking the engine for an unbounded texture. A
+// Black/White or Black 2/White 2 front is at most 160 px and a back at most
+// 128, so the bound is headroom, not a cap.
+const MaxCell = 256
+
 // HostFrame is one frame's scaled content box inside a cell.
 type HostFrame struct{ X, Y, W, H int }
 
 // HostFit is an animation placed in one square native cell.
 type HostFit struct {
 	// Size is the square cell side: HostBox (64) when the art fits, otherwise
-	// its native size rounded up to four, capped by the side's caps. A front
-	// cell is 64..HostFrontWidth (160) with ink no taller than HostFrontMax
-	// (112); a back cell is 64..HostBackMax (112).
+	// its native size rounded up to four. FitNative never caps it, so a cell can
+	// be larger than the battle slot; FitHost caps it per side.
 	Size int
 	// Frames holds one placement per input frame, in cell coordinates.
 	Frames []HostFrame
 	// InkW, InkH is the scaled size of the box enclosing every frame.
 	InkW, InkH int
-	// Scaled reports whether the art had to be reduced to fit maxCell.
+	// Scaled reports whether the art had to be reduced to fit a cap. FitNative
+	// never reduces anything, so a mod pack always reports false.
 	Scaled bool
 }
 
@@ -63,6 +70,50 @@ func scaledSize(n int, scale float64) int {
 // footing correction is an integer.
 func roundUp4(n int) int {
 	return (n + 3) / 4 * 4
+}
+
+// FitNative places an animation in a square cell at its own scale. Nothing is
+// enlarged and nothing is reduced: every Black/White (and Black 2/White 2)
+// pixel the dump contains is kept, so a moving wing is never resampled into a
+// smaller cell. The cell side is the union's larger side rounded up to four,
+// never below HostBox.
+//
+// The union is centred horizontally with its lowest ink row on the cell's last
+// row, and each frame keeps its sprite-space offset inside it, exactly as
+// FitHost places a fitted animation. The runtime then zeroes the per-species y
+// padding and substitutes the cell correction, so the feet land on the
+// cartridge's ground row whatever the cell size.
+func FitNative(frames []Frame) (*HostFit, error) {
+	if len(frames) == 0 {
+		return nil, fmt.Errorf("animation has no frames")
+	}
+	for i, f := range frames {
+		if f.Bounds.MaxX <= f.Bounds.MinX || f.Bounds.MaxY <= f.Bounds.MinY {
+			return nil, fmt.Errorf("frame %d has an empty content box %v", i, f.Bounds)
+		}
+	}
+	u := Union(frames)
+	if u.Width() < 1 || u.Height() < 1 {
+		return nil, fmt.Errorf("animation union %dx%d is empty", u.Width(), u.Height())
+	}
+	fit := &HostFit{InkW: u.Width(), InkH: u.Height()}
+	fit.Size = max(HostBox, roundUp4(max(fit.InkW, fit.InkH)))
+	if fit.Size > MaxCell {
+		return nil, fmt.Errorf("animation needs a %d px cell, over the %d px limit", fit.Size, MaxCell)
+	}
+	left := (fit.Size - fit.InkW) / 2
+	fit.Frames = make([]HostFrame, len(frames))
+	for i, f := range frames {
+		w, h := f.Bounds.Width(), f.Bounds.Height()
+		x := left + f.Bounds.MinX - u.MinX
+		// The union's lowest ink row lands on the cell's last row; a frame sits
+		// however far its own bottom is above the union's.
+		y := fit.Size - HostPad - h - (u.MaxY - f.Bounds.MaxY)
+		x = min(max(x, 0), fit.Size-w)
+		y = min(max(y, 0), fit.Size-h)
+		fit.Frames[i] = HostFrame{X: x, Y: y, W: w, H: h}
+	}
+	return fit, nil
 }
 
 // FitHost places an animation in a square cell. maxW and maxH are the side's
@@ -84,7 +135,8 @@ func roundUp4(n int) int {
 //
 // The runtime shifts a wider-than-64 picture left on a fixed-origin engine so
 // its centre lands on the battler's x, and its y correction puts the cell
-// bottom on the cartridge ground row. The Pokedex scales the cell into 64x64.
+// bottom on the cartridge ground row. FitNative is the mod pack's fitter: it
+// never reduces art, so no view loses pixels to a cap.
 func FitHost(frames []Frame, maxW, maxH, targetH int) (*HostFit, error) {
 	if len(frames) == 0 {
 		return nil, fmt.Errorf("animation has no frames")

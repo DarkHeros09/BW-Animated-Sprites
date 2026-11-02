@@ -9,8 +9,13 @@ import (
 	"bwsprites/internal/nitro"
 )
 
-// ImporterID names this importer in pack manifests.
+// ImporterID names the Black/White importer in pack manifests.
 const ImporterID = "gen5_bw"
+
+// ImporterIDBW2 names the Black 2/White 2 importer in pack manifests. The two
+// games share the archive layout this package decodes, but a pack records which
+// dump it came from.
+const ImporterIDBW2 = "gen5_bw2"
 
 // ExportVersion is the pack format revision this importer writes.
 const ExportVersion = "1.0.0"
@@ -21,9 +26,52 @@ const MaxDex = 649
 // MaxTicks bounds one exported animation cycle.
 const MaxTicks = 240
 
-// UntrimmedSize is the expected ROM length; a trimmed dump breaks the
-// filesystem offsets the importer relies on.
+// UntrimmedSize is the expected Black/White ROM length; a trimmed dump breaks
+// the filesystem offsets the importer relies on.
 const UntrimmedSize = 268435456
+
+// UntrimmedSizeBW2 is the expected Black 2/White 2 ROM length. Black 2 and
+// White 2 are 512 MiB dumps: a larger sound archive and the extra form sprite
+// entries than Black/White's 256 MiB dump.
+const UntrimmedSizeBW2 = 536870912
+
+// game is one supported generation 5 pair: the untrimmed dump length, the game
+// codes it accepts and the importer id a pack records.
+type game struct {
+	family    string
+	untrimmed int
+	importer  string
+	names     map[string]string
+}
+
+// supported lists the dumps this importer reads. Black 2/White 2 keep the same
+// sprite archive (/a/0/0/4), the same 20 members per species and the same
+// NCGR/NCER/NANR/NCMR/NMAR/palette order, with their extra form graphics after
+// national dex 649, so one decoder serves both; every member is still validated
+// while it is read, so a dump that differs fails with the member at fault.
+var supported = []game{
+	{
+		family: "bw", untrimmed: UntrimmedSize, importer: ImporterID,
+		names: map[string]string{"IRA": "Pokemon White", "IRB": "Pokemon Black"},
+	},
+	{
+		family: "bw2", untrimmed: UntrimmedSizeBW2, importer: ImporterIDBW2,
+		names: map[string]string{"IRD": "Pokemon White 2", "IRE": "Pokemon Black 2"},
+	},
+}
+
+// gameFor returns the game a 4-byte ROM code belongs to.
+func gameFor(code string) (game, string, bool) {
+	if len(code) < 3 {
+		return game{}, "", false
+	}
+	for _, g := range supported {
+		if name, ok := g.names[code[:3]]; ok {
+			return g, name, true
+		}
+	}
+	return game{}, "", false
+}
 
 // spriteArchive is the ROM path of the 20-files-per-species sprite NARC.
 const spriteArchive = "/a/0/0/4"
@@ -44,10 +92,12 @@ type Sprite struct {
 	MapIndex       int
 }
 
-// ROM is an opened Black/White dump with its sprite archive.
+// ROM is an opened Black/White or Black 2/White 2 dump with its sprite archive.
 type ROM struct {
 	inner   *nds.ROM
 	archive *nitro.Archive
+	game    game
+	title   string
 }
 
 // Identify opens path and checks that it is a supported, untrimmed dump. Size
@@ -70,12 +120,18 @@ func Identify(path string) (*ROM, error) {
 		return nil, fmt.Errorf("%s is too short to be a ROM dump: %w", filepath.Base(path), err)
 	}
 	f.Close()
-	if info.Size() != UntrimmedSize {
-		return nil, fmt.Errorf("%s is %d bytes, want an untrimmed %d byte dump (trimmed ROMs move the file offsets)",
-			filepath.Base(path), info.Size(), UntrimmedSize)
+	if info.Size() != UntrimmedSize && info.Size() != UntrimmedSizeBW2 {
+		return nil, fmt.Errorf("%s is %d bytes, want an untrimmed %d byte Black/White or %d byte Black 2/White 2 dump (trimmed ROMs move the file offsets)",
+			filepath.Base(path), info.Size(), UntrimmedSize, UntrimmedSizeBW2)
 	}
-	if code := string(head[:]); code[:3] != "IRA" && code[:3] != "IRB" {
-		return nil, fmt.Errorf("game code %q is not Black/White (IRA*/IRB*); Black 2/White 2 and other revisions are not supported", code)
+	code := string(head[:])
+	g, title, ok := gameFor(code)
+	if !ok {
+		return nil, fmt.Errorf("game code %q is not a supported game: this tool reads Black/White (IRA*/IRB*) and Black 2/White 2 (IRD*/IRE*) dumps", code)
+	}
+	if info.Size() != int64(g.untrimmed) {
+		return nil, fmt.Errorf("%s (%s) is %d bytes, want an untrimmed %d byte dump (trimmed ROMs move the file offsets)",
+			filepath.Base(path), title, info.Size(), g.untrimmed)
 	}
 
 	r, err := nds.Open(path)
@@ -98,10 +154,10 @@ func Identify(path string) (*ROM, error) {
 		return nil, fmt.Errorf("sprite archive %s: %w", spriteArchive, err)
 	}
 	if archive.Count() < (MaxDex+1)*20 {
-		return nil, fmt.Errorf("sprite archive has %d members, want at least %d for a complete Black/White dump",
-			archive.Count(), (MaxDex+1)*20)
+		return nil, fmt.Errorf("sprite archive has %d members, want at least %d for a complete %s dump",
+			archive.Count(), (MaxDex+1)*20, title)
 	}
-	return &ROM{inner: r, archive: archive}, nil
+	return &ROM{inner: r, archive: archive, game: g, title: title}, nil
 }
 
 // Code reports the ROM game code.
@@ -114,12 +170,13 @@ func (r *ROM) Path() string { return r.inner.Path() }
 func (r *ROM) Size() int { return r.inner.Size() }
 
 // Name reports a human-readable identification.
-func (r *ROM) Name() string {
-	if r.inner.Code()[:3] == "IRB" {
-		return "Pokemon Black (" + r.inner.Code() + ")"
-	}
-	return "Pokemon White (" + r.inner.Code() + ")"
-}
+func (r *ROM) Name() string { return r.title + " (" + r.inner.Code() + ")" }
+
+// ImporterID reports the importer id a pack built from this dump records.
+func (r *ROM) ImporterID() string { return r.game.importer }
+
+// Family reports "bw" or "bw2", the pair this dump belongs to.
+func (r *ROM) Family() string { return r.game.family }
 
 func (r *ROM) member(index int) ([]byte, error) {
 	data, err := r.archive.MemberDecompressed(index, MaxEntryBytes)

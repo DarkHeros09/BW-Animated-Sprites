@@ -67,32 +67,33 @@ silently scaling them down would throw away the extra detail the mod exists for.
 - The cap at 256 exists so a corrupt measurement cannot make the exporter
   allocate unbounded memory; exceeding it is an error, not a silent clamp.
 
-### The mod pack's fit: native Black/White art in the host's slots
+### The mod pack's fit: the art's own cells in the host's slots
 
 The gen1recomp mod keeps facets' ground rule but not facets' 64 px ceiling.
 Facets can reject or freeze anything above 64; this pack scales nothing up and
-ships the art the dump already contains. The earlier per-species facets target
-caused exactly the regression the user reported: a bird whose wings move has a
-tall union, so fitting the union into a 72 px slot shrank the body to 58 px and
-resampled it. Native cells remove both problems.
+nothing down, and ships the art the dump already contains. The earlier
+per-species facets target caused exactly the regression the user reported: a
+bird whose wings move has a tall union, so fitting the union into a 72 px slot
+shrank the body to 58 px and resampled it. Native cells remove both problems.
 
-- **Enemy front: a square cell 64..160 px wide and 64..112 px tall.** Every
-  Black/White front fits (the largest is 153×104), so no front is resampled:
-  Pidgeotto is 104 px, Fearow 96, Lugia 156 and Pikachu 64. The 240×160 scene
-  has only 72 rows above the enemy ground row, so a taller front cannot also
-  put its feet on that row. The runtime anchors its ink top on scene row 0 and
-  lets the bottom run behind the battle UI; the user allowed that as long as
-  the top is never clipped. A front wider than the room right of the enemy base
-  (x=176) is slid left by the draw wrapper until it fits the 240 px scene.
-- **Player back: a square cell 64..112 px.** The player ground row is low, so a
+- **Enemy front: a square cell from 64 px up, as large as the union needs.** Every
+  Black/White and Black 2/White 2 front keeps its own pixels — Pidgeotto is
+  104 px, Fearow 96, Lugia 156 and Pikachu 64 — because the cell grows with the
+  art instead of the art shrinking into a slot. The 240×160 scene has only 72
+  rows above the enemy ground row, so a taller front cannot also put its feet on
+  that row. The runtime anchors its ink top on scene row 0 and lets the bottom
+  run behind the battle UI; the user allowed that as long as the top is never
+  clipped. A front wider than the room right of the enemy base (x=176) is slid
+  left by the draw wrapper until it fits the 240 px scene.
+- **Player back: a square cell from 64 px up.** The player ground row is low, so a
   native back keeps its size; Charizard is 100 px, not 53. A tall back is moved
   down until its first ink row is on scene row 46 or later, below the enemy HP
   box, so the user's top rule also holds for the player's side. It is still the
   same cell size; only its y padding changes, and its feet may sit behind the
   battle menu.
-- `scale = min(1, 160/unionW, 112/unionH)` for a front and
-  `min(1, 112/unionW, 112/unionH)` for a back. Only two back views in the
-  current pack are past a cap; no front is.
+- `scale = 1`: there is no cap to hit. `measure.FitNative` is the fitter the pack
+  uses, and it only rounds the union up to a multiple of four; the 256 px bound
+  exists so a corrupt measurement is an error, not a memory request.
 - `Size = max(64, roundUp4(max(InkW, InkH)))`: the cell is square and never
   smaller than the cartridge's picture. The union is centred horizontally and
   its lowest ink row is the cell's last row, so a wide front has transparent
@@ -111,10 +112,12 @@ resampled it. Native cells remove both problems.
 - A female battler reads the `frontFemale`/`backFemale` view when the dump has
   one. Female cells are fitted independently, and a species without distinct
   female art falls back to the male view.
-- The Pokedex path stores the largest pose's content box (`<side>Dex`), takes
-  that same window from the frame that is currently playing, and fits it into
-  its 64×64 window without enlarging. The scale and position are fixed, so the
-  idle animation plays while the corrected dex size is preserved.
+- The Pokedex path stores the box enclosing every pose (`<side>Dex`) and crops
+  that same window from the frame that is currently playing at 1:1, so the dex
+  shows the dump's pixels. The draw wrapper centres it in the card's picture area
+  (112×68, above the flavour-text divider) and clamps it to the screen: a window
+  larger than the area overhangs the card rather than being reduced, and no pose
+  is cut off at an edge. Position is fixed, so the idle plays in place.
 
 Consequence: the host sees Pikachu at its native 46 px of ink in a 64 px cell,
 Charizard's front at 92 px and back at 100 px, and Pidgeotto at 104 px. Relative

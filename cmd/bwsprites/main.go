@@ -72,7 +72,8 @@ func usage() {
   bwsprites verify -pack DIR
   bwsprites demo   -out DIR [-force]
 
-The ROM must be an untrimmed 256 MiB Black or White (IRB*/IRA*) dump.
+The ROM must be an untrimmed 256 MiB Black or White (IRB*/IRA*) or 512 MiB
+Black 2 or White 2 (IRE*/IRD*) dump.
 A range like 1-20 or a list 1,4,25 works; "both" expands to every value.
 
 -frame 0 fits each sprite's cell to its own content, never below the facets
@@ -85,9 +86,9 @@ dump and writes it as JSON. -coords then lands each sprite on the row that game
 uses instead of one row for the whole pack. Those tables are indexed by the
 game's internal species slot, not national dex.
 
-modpack builds the sprite data the gen1recomp mod reads: one 64x64 cell per
-frame, ink centred on the engine's fixed picture origin with its lowest row on
-the ground row, both sides and both palettes. mod wraps that data and the mod's
+modpack builds the sprite data the gen1recomp mod reads: one native-size cell
+per frame (nothing is resampled), ink centred with its lowest row on the ground
+row, both sides and both palettes. mod wraps that data and the mod's
 own Lua into a folder you can drop into <LOVE save dir>/<identity>/mods/, and
 install does that drop for you. The mod itself replaces the battle pictures of
 FireRed, LeafGreen and Emerald; it is not an in-game ROM patch.
@@ -537,8 +538,8 @@ func modpackCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%d species, %d strips (%d scaled down past a cell cap), %s written to %s\n",
-		report.Entries, report.Sheets, report.Scaled, humanBytes(report.Bytes), *out)
+	fmt.Printf("%d species, %d strips (%s, every view at native size) written to %s\n",
+		report.Entries, report.Sheets, humanBytes(report.Bytes), *out)
 	fmt.Printf("next: bwsprites install -pack %s\n", *out)
 	return nil
 }

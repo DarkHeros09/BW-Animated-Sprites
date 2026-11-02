@@ -1,13 +1,15 @@
 -- Loads a bwsprites pack and turns its sheets into frame images on demand.
--- Format 2 packs store square cells in a grid: native 64..160 px fronts (no
--- Black/White front needs more) and up to 112 px backs. The reader accepts the
--- same range for older packs. Every entry point takes the reader it needs, so
--- this file can be exercised without the engine.
+-- Format 2 packs store square cells in a grid, one cell per frame at the art's
+-- own size: the cell is the animation's union, so a view is never resampled and
+-- a cell can be larger than the host's battle cell. Every entry point takes the
+-- reader it needs, so this file can be exercised without the engine.
 local Pack = {}
 
 Pack.BOX = 64
 Pack.MIN_SIZE = 64
-Pack.MAX_SIZE = 160
+-- A native cell is never shrunk to a cap: 256 is headroom for the art, not a
+-- scale limit.
+Pack.MAX_SIZE = 256
 Pack.PAD = 0
 Pack.MAX_FRAMES = 1024
 Pack.MAX_COLUMNS = 64
@@ -238,18 +240,44 @@ function Pack:frameImage(view, index)
   return image
 end
 
--- fitRect fits the Pokedex's fixed crop window (the largest pose's content box,
--- not a whole square cell) into the 64x64 picture the dex reserves. It never
--- enlarges, so a species that facets draws small stays small, and a wide
--- animation is not squeezed by the transparent margins around its wings. The
--- window is fixed, so the current frame animates without changing scale.
-function Pack.fitRect(image, rect)
-  local okCanvas, canvas = pcall(love.graphics.newCanvas, Pack.BOX, Pack.BOX, { dpiscale = 1 })
+-- cropRect cuts a rectangle out of the sheet at 1:1 and returns it as an image.
+-- The Pokedex picture is the animation's whole pose window, so every pose still
+-- fits while it plays, and no pixel is resampled or dropped: the picture the
+-- engine draws is the dump's own art.
+function Pack.cropRect(data, rect)
+  local ok, out = pcall(love.image.newImageData, rect.w, rect.h)
+  if not ok or not out then return nil, "could not allocate the dex window" end
+  local pasted, err = pcall(out.paste, out, data, 0, 0, rect.x, rect.y, rect.w, rect.h)
+  if not pasted then
+    out:release()
+    return nil, tostring(err)
+  end
+  local made, image = pcall(love.graphics.newImage, out)
+  out:release()
+  if not made or not image then return nil, "could not make the dex picture" end
+  image:setFilter("nearest", "nearest")
+  return image
+end
+
+-- fitRect reduces the same pose window into a boxW x boxH picture, keeping the
+-- whole window. Only the layouts that hold the cartridge's own 64x64 scale need
+-- it -- the dex's size comparison beside the trainer and the credits roll -- and
+-- it never enlarges.
+function Pack.fitRect(image, rect, boxW, boxH)
+  boxW, boxH = boxW or Pack.BOX, boxH or Pack.BOX
+  local sheetW, sheetH = image:getDimensions()
+  if type(rect) ~= "table" or (rect.w or 0) < 1 or (rect.h or 0) < 1
+    or (rect.x or 0) < 0 or (rect.y or 0) < 0
+    or rect.x + rect.w > sheetW or rect.y + rect.h > sheetH then
+    return nil, "the pose window is outside its frame"
+  end
+  local okCanvas, canvas = pcall(love.graphics.newCanvas, boxW, boxH, { dpiscale = 1 })
   if not okCanvas or not canvas then
-    okCanvas, canvas = pcall(love.graphics.newCanvas, Pack.BOX, Pack.BOX)
+    okCanvas, canvas = pcall(love.graphics.newCanvas, boxW, boxH)
   end
   if not okCanvas or not canvas then return nil end
-  local scale = math.min(Pack.BOX / rect.w, Pack.BOX / rect.h, 1)
+  local scale = math.min(boxW / rect.w, boxH / rect.h, 1)
+  local width, height = rect.w * scale, rect.h * scale
   local ok, err = pcall(function()
     image:setFilter("nearest", "nearest")
     local quad = love.graphics.newQuad(rect.x, rect.y, rect.w, rect.h, image:getDimensions())
@@ -264,7 +292,7 @@ function Pack.fitRect(image, rect)
         love.graphics.setBlendMode("replace")
         love.graphics.setColor(1, 1, 1, 1)
         love.graphics.draw(image, quad,
-          (Pack.BOX - rect.w * scale) / 2, (Pack.BOX - rect.h * scale) / 2, 0, scale, scale)
+          (boxW - width) / 2, boxH - height, 0, scale, scale)
       end)
       love.graphics.pop()
       if not innerOk then error(innerErr, 0) end
@@ -284,69 +312,44 @@ function Pack.fitRect(image, rect)
   return scaled
 end
 
--- scaleCell draws a non-64 cell from an older pack, which carries no fitted
--- pose box, into the 64x64 box the Pokedex reserves.
-function Pack.scaleCell(image, from, to)
-  local okCanvas, canvas = pcall(love.graphics.newCanvas, to, to, { dpiscale = 1 })
-  if not okCanvas or not canvas then
-    okCanvas, canvas = pcall(love.graphics.newCanvas, to, to)
-  end
-  if not okCanvas or not canvas then return nil end
-  local ok, err = pcall(function()
-    image:setFilter("nearest", "nearest")
-    canvas:renderTo(function()
-      love.graphics.push("all")
-      local innerOk, innerErr = pcall(function()
-        love.graphics.origin()
-        love.graphics.setScissor()
-        love.graphics.setStencilTest()
-        love.graphics.setShader()
-        love.graphics.clear(0, 0, 0, 0)
-        love.graphics.setBlendMode("replace")
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.draw(image, 0, 0, 0, to / from, to / from)
-      end)
-      love.graphics.pop()
-      if not innerOk then error(innerErr, 0) end
-    end)
-  end)
-  if not ok then
-    canvas:release()
-    return nil, tostring(err)
-  end
-  local okData, out = pcall(canvas.newImageData, canvas)
-  canvas:release()
-  if not okData or not out then return nil end
-  local made, scaled = pcall(love.graphics.newImage, out)
-  out:release()
-  if not made or not scaled then return nil end
-  scaled:setFilter("nearest", "nearest")
-  return scaled
-end
-
--- dexFrame is the Pokedex's view: the current animation frame cropped to the
--- fixed window of the largest pose and fitted into the 64x64 box the dex lays
--- out. A pack built before that metadata existed falls back to the current
--- frame scaled as a whole cell.
+-- dexFrame is the Pokedex's picture: the current animation frame cropped to the
+-- window that encloses every pose, at 1:1. The window is fixed and never
+-- reduced, so the dex shows the dump's pixels and the picture does not change
+-- scale as the idle plays; the mod places it in the card and keeps it on screen.
+-- A pack built before that metadata existed crops its whole cell instead.
 function Pack:dexFrame(nat, side, shiny, now)
   local view, err = self:view(nat, side, shiny)
   if not view then return nil, err end
-  local rect = view.dexRect
+  local rect = view.dexRect or { x = 0, y = 0, w = view.cell, h = view.cell }
   local index = self:frameIndex(view, now)
-  local scaled = view.dex[index]
+  local cached = view.dex[index]
+  if cached == nil then
+    cached = Pack.cropRect(view.data, rect) or false
+    view.dex[index] = cached
+  end
+  if not cached then return nil, "could not cut a dex-sized frame" end
+  return { image = cached, w = rect.w, h = rect.h,
+           animated = view.frames > 1, shiny = shiny and true or false }
+end
+
+-- boxFrame is the picture the dex's size comparison and the credits roll want:
+-- the same pose window reduced into the 64x64 box those layouts reserve, because
+-- they compare it against the cartridge's own trainer and sprite scale.
+function Pack:boxFrame(nat, side, shiny, now, boxW, boxH)
+  boxW, boxH = boxW or Pack.BOX, boxH or Pack.BOX
+  local view, err = self:view(nat, side, shiny)
+  if not view then return nil, err end
+  local rect = view.dexRect or { x = 0, y = 0, w = view.cell, h = view.cell }
+  local index = self:frameIndex(view, now)
+  local key = index .. "/" .. boxW .. "x" .. boxH
+  local scaled = view.dex[key]
   if scaled == nil then
     local image = self:frameImage(view, index)
-    if image and rect then
-      scaled = Pack.fitRect(image, rect) or false
-    elseif image and view.cell == Pack.BOX then
-      scaled = image
-    else
-      scaled = image and Pack.scaleCell(image, view.cell, Pack.BOX) or false
-    end
-    view.dex[index] = scaled
+    scaled = image and Pack.fitRect(image, rect, boxW, boxH) or false
+    view.dex[key] = scaled
   end
-  if not scaled then return nil, "could not fit a dex-sized frame" end
-  return { image = scaled, w = Pack.BOX, h = Pack.BOX,
+  if not scaled then return nil, "could not fit a boxed dex frame" end
+  return { image = scaled, w = boxW, h = boxH,
            animated = view.frames > 1, shiny = shiny and true or false }
 end
 

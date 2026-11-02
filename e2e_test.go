@@ -87,7 +87,10 @@ func TestMissingPackFailsLoudly(t *testing.T) {
 // native 96px player back whose top must clear the enemy healthbox, and 25
 // also carries distinct 64px female front and back views with their own image.
 // In each cell the ink ends on the last row, as the builder places it, so the
-// harness can check the cell geometry too.
+// harness can check the cell geometry too. 25 and 32 also carry the dex window,
+// the box enclosing every pose: the mod crops it at 1:1, so 25 gives a 24x20
+// picture centred in the card's picture area and 32 a 24x72 one that overhangs
+// the area instead of being reduced.
 const modPackIndex = `return {
   format = 2,
   importer = "gen5_bw",
@@ -122,7 +125,8 @@ const modPackIndex = `return {
     [31] = { front = "front/31/normal.png", frontFrames = 1, frontSize = 72,
       frontColumns = 1, frontInkH = 72, frontDurations = { 10 }, frontLoopStart = 0 },
     [32] = { front = "front/32/normal.png", frontFrames = 1, frontSize = 120,
-      frontColumns = 1, frontInkH = 72, frontDurations = { 10 }, frontLoopStart = 0 },
+      frontColumns = 1, frontInkH = 72, frontDex = { x = 48, y = 48, w = 24, h = 72 },
+      frontDurations = { 10 }, frontLoopStart = 0 },
     [33] = { back = "back/33/normal.png", backFrames = 1, backSize = 96, backColumns = 1,
       backInkH = 96, backDurations = { 10 }, backLoopStart = 0 },
   },
