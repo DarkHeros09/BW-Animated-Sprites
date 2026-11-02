@@ -76,7 +76,7 @@ boundary; it is there to make "which dump produced this?" answerable.
 | `durations` | per frame, in ticks; index-aligned with `offsets` |
 | `loopStart` | frame index the loop returns to |
 | `cycleTicks` | sum of `durations` |
-| `cycleCapped` | true when the source cycle was cut at the export bound (240 ticks) |
+| `cycleCapped` | true when the source cycle was cut at the export bound (480 ticks) |
 | `union` | `[minX, minY, maxX, maxY]` in cell space, max exclusive, enclosing every frame |
 | `strip` | strip path relative to the pack root, forward slashes |
 
@@ -213,7 +213,7 @@ return {
   `InkH` are per view and shared by every cell in that sheet. The writer picks
   the fewest columns that keep the sheet within the 4096 px GLES2 texture floor,
   so most views are a single column (Pikachu's 27-frame front is 64x1728;
-  Charizard's 40-frame 92 px front is 92x3680, its 18-frame back is 100x1800;
+  Charizard's 72-frame 92 px front is 184x3312, its 18-frame back is 100x1800;
   Pidgeotto's 18-frame 104 px front is 104x1872) and only a view taller than
   4096 px is split.
 - The time model is identical to the previewer's: `tick = floor(seconds * 60)`,

@@ -16,14 +16,15 @@ import (
 // chosen per view so neither sheet dimension goes past it.
 const maxSheet = 4096
 
-// maxColumns bounds the grid width. The tallest animation in the ROM is 240
-// ticks; even a 128 px cell needs only a few columns, so this is a sanity cap.
+// maxColumns bounds the grid width. A cycle is at most 480 ticks; even a 256 px
+// cell needs only a few columns, so this is a sanity cap.
 const maxColumns = 64
 
 // rendered is one palette's sheet and the timing shared by every palette.
 type rendered struct {
-	view  *View
-	sheet *image.Paletted
+	view   *View
+	sheet  *image.Paletted
+	capped bool
 }
 
 // sheetColumns picks the grid width for a view: enough columns that the sheet
@@ -99,6 +100,7 @@ func render(s *gen5.Sprite, palette string) (*rendered, error) {
 	}
 	dexX, dexY, dexW, dexH := dexBox(fit.Frames)
 	return &rendered{
+		capped: timeline.Capped,
 		view: &View{
 			Frames:    len(timeline.Poses),
 			Size:      fit.Size,

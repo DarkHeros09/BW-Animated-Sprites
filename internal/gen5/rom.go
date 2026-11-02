@@ -23,8 +23,12 @@ const ExportVersion = "1.0.0"
 // MaxDex is the highest national dex number Black/White contains.
 const MaxDex = 649
 
-// MaxTicks bounds one exported animation cycle.
-const MaxTicks = 240
+// MaxTicks bounds one exported animation cycle. Most idle cycles are shorter:
+// half the views finish within 90 ticks and 96% within 432 (Charizard's 72
+// poses at 6 ticks each). A handful of multi-part animations repeat only after
+// a huge least common multiple, so the bound still cuts those; 480 keeps every
+// ordinary cycle whole without exporting a multi-minute loop.
+const MaxTicks = 480
 
 // UntrimmedSize is the expected Black/White ROM length; a trimmed dump breaks
 // the filesystem offsets the importer relies on.

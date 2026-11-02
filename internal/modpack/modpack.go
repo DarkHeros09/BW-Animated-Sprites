@@ -90,6 +90,9 @@ type Report struct {
 	Sheets int
 	// Bytes is the total size of the files written.
 	Bytes int64
+	// Capped counts views whose idle cycle was longer than gen5.MaxTicks
+	// and therefore exported its first MaxTicks only.
+	Capped int
 }
 
 // Options limits what a build renders; the zero value builds every species,
@@ -242,6 +245,9 @@ func buildView(rom *gen5.ROM, out string, dex int, side string, female bool, opt
 		report.Bytes += size
 		if view == nil {
 			view = rendered.view
+			if rendered.capped {
+				report.Capped++
+			}
 		} else if view.Frames != rendered.view.Frames || !sameDurations(view.Durations, rendered.view.Durations) {
 			return nil, fmt.Errorf("dex %d %s: %s and %s disagree on the animation (%d vs %d frames)",
 				dex, side, opts.palettes()[0], palette, view.Frames, rendered.view.Frames)

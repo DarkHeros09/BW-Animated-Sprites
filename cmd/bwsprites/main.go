@@ -540,6 +540,10 @@ func modpackCommand(args []string) error {
 	}
 	fmt.Printf("%d species, %d strips (%s, every view at native size) written to %s\n",
 		report.Entries, report.Sheets, humanBytes(report.Bytes), *out)
+	if report.Capped > 0 {
+		fmt.Printf("%d views exceed the %d tick bound and export the start of their cycle\n",
+			report.Capped, gen5.MaxTicks)
+	}
 	fmt.Printf("next: bwsprites install -pack %s\n", *out)
 	return nil
 }

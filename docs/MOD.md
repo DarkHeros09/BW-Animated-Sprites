@@ -275,8 +275,9 @@ back, and a frame change between two captures, and writes the screenshots under
 - **Animations play at cartridge speed.** A frame is a distinct
   `(cell, transform)` pose, not only a distinct cell: a sprite that sways,
   squashes or hovers on one cell still animates. That restores 13,777 front /
-  13,032 back male poses, plus 96 female pairs (30,807 frames in total; only dex
-  273, 299 and 546 genuinely have one frame), so nothing is frozen or skipped.
+  13,032 back male poses, plus female views and the full cycles (35,320 frames
+  from the Black 2 dump; only dex 273, 299 and 546 genuinely have one frame), so
+  nothing is frozen or skipped.
   NMAR durations are hold times in 60 Hz ticks and are used as-is.
 - **Native sizes, not facets' 64x64 cap.** A cell is the animation's union, so no
   view is resampled and a bird that moves its wings no longer shrinks to fit a
@@ -291,8 +292,13 @@ back, and a frame change between two captures, and writes the screenshots under
   the cartridge's proportions.
 - **Sheets are grids.** The writer lays each view out in the fewest columns that
   keep the sheet within 4096 px (the GLES2 texture floor). Most views are a
-  single column: Pikachu's 27-frame front is 64x1728, Charizard's 40-frame 92 px
-  front is 92x3680 and its 18-frame 100 px back is 100x1800.
+  single column: Pikachu's 27-frame front is 64x1728, Charizard's 72-frame 92 px
+  front is 184x3312 and its 18-frame 100 px back is 100x1800.
+- **Cycles cap at 480 ticks (8 s).** Most idles are shorter (median 90 ticks;
+  96% at or under Charizard's 432), so they loop whole. A few multi-part idles
+  repeat only after a very large least common multiple; those export the first
+  8 s (56 views for the Black 2 dump) and the pack build prints the count. No
+  frame is cut or resampled.
 - **The battle scene stays 240×160.** Gen 3's display size is fixed
   (`src/core/game3/display.lua:9-10`); a mod can change what is drawn in it, not
   its size. The native front/back art runs behind the battle UI when taller than

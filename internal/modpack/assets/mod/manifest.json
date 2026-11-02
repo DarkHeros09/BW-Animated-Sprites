@@ -1,7 +1,7 @@
 {
   "id": "bwsprites",
   "name": "BW Animated Sprites",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",

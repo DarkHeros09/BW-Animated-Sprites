@@ -7,7 +7,8 @@ sprites.
 
 It has three parts and two shared formats:
 
-- `cmd/bwsprites` (Go) — reads the sprite archive out of a local Black/White dump,
+- `cmd/bwsprites` (Go) — reads the sprite archive out of a local Black/White or
+  Black 2/White 2 dump,
   plays back each idle animation, measures every frame with the facets convention,
   and writes a **pack** directory (a PNG strip plus a JSON sidecar per sprite).
 - `love/` (Lua, LÖVE 11) — loads a pack, plays the animations, and draws the
@@ -323,5 +324,8 @@ mod pack's PNGs back and checks every animation's ink centre and ground row.
   is engine work, not mod work.
 - **The previewer is a viewer, not a game.** It draws one entry at a time at an
   integer zoom, with no battle, map or UI context.
-- The 240-tick cycle cap is inherited from the importer's bound; a cut cycle is
-  flagged with `cycleCapped`.
+- **Animation cycles cap at 480 ticks (8 s).** Most idles are shorter (median 90,
+  96% at or under Charizard's 432), so they loop whole. A few multi-part idles
+  repeat only after a very large least common multiple; those export their first
+  480 ticks and are counted in the `modpack` report (`56 views exceed the 480
+  tick bound` for the BW2 dump). No frame is cut or resampled.

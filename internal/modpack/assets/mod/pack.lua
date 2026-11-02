@@ -324,7 +324,12 @@ function Pack:dexFrame(nat, side, shiny, now)
   local index = self:frameIndex(view, now)
   local cached = view.dex[index]
   if cached == nil then
-    cached = Pack.cropRect(view.data, rect) or false
+    -- rect is in cell coordinates; the sheet holds the cells in a grid, so the
+    -- frame's own cell has to be added or every pose would crop the first cell.
+    local col = (index - 1) % view.columns
+    local row = math.floor((index - 1) / view.columns)
+    local at = { x = rect.x + col * view.cell, y = rect.y + row * view.cell, w = rect.w, h = rect.h }
+    cached = Pack.cropRect(view.data, at) or false
     view.dex[index] = cached
   end
   if not cached then return nil, "could not cut a dex-sized frame" end

@@ -127,9 +127,9 @@ cartridge's ground row unless it had to be top-anchored to avoid clipping.
 ## Deviation 2: placement comes from the animation's union, not frame 0
 
 Facets has one authored picture per species, so freezing frame 0 is free. A Gen 5
-idle animation is a composite of up to 240 ticks of assembled parts, and frames
-arrive already cropped to their opaque content with a position in the shared
-sprite space. So:
+idle animation is a composite assembled part-by-part; nearly every idle is at
+most 480 ticks (8 s), and frames arrive already cropped to their opaque content
+with a position in the shared sprite space. So:
 
 - The union of all frame boxes is placed as one group by the formulas above.
 - Each frame keeps its own offset inside that group:

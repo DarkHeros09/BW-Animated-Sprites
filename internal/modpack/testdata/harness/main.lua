@@ -475,6 +475,37 @@ local function main()
     return minX, minY, maxX - minX + 1, maxY - minY + 1
   end
 
+  -- A pixel signature distinguishes two poses that happen to be fresh images.
+  -- The dex crop must add the frame's own cell offset; without it every pose is
+  -- a crop of cell one and the picture freezes even though the image changes.
+  local function pixelSignature(image)
+    local iw, ih = image:getDimensions()
+    local canvas = love.graphics.newCanvas(iw, ih, { dpiscale = 1 })
+    canvas:renderTo(function()
+      love.graphics.push("all")
+      love.graphics.origin()
+      love.graphics.setScissor()
+      love.graphics.setStencilTest()
+      love.graphics.setShader()
+      love.graphics.clear(0, 0, 0, 0)
+      love.graphics.setBlendMode("replace")
+      love.graphics.setColor(1, 1, 1, 1)
+      engineDraw(image, 0, 0)
+      love.graphics.pop()
+    end)
+    local data = canvas:newImageData()
+    canvas:release()
+    local out = {}
+    for y = 0, ih - 1 do
+      for x = 0, iw - 1 do
+        local r, g, b, a = data:getPixel(x, y)
+        out[#out + 1] = string.format("%.3f,%.3f,%.3f,%.3f", r, g, b, a)
+      end
+    end
+    data:release()
+    return table.concat(out, ";")
+  end
+
   local dex = Pokemon.dexFrontPic(25, 0)
   -- The pack serves the animation's whole pose window at 1:1; 25's window is
   -- 24x20, so the picture is exactly that and no pixel was reduced.
@@ -533,6 +564,10 @@ local function main()
   check(dexNext ~= nil and dexNext.image ~= nil and dex.image ~= nil
     and dexNext.image ~= dex.image,
     "the Pokedex keeps animating inside the fixed window")
+  if dexNext and dexNext.image and dex.image then
+    check(pixelSignature(dexNext.image) ~= pixelSignature(dex.image),
+      "the Pokedex pose advances to the next cell, not a re-crop of the first")
+  end
   check(Pokemon.dexFrontPic(1, 0).vanilla == "dex",
     "the Pokedex keeps the cartridge picture for an absent species")
 
