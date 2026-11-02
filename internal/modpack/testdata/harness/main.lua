@@ -67,6 +67,47 @@ local function main()
   check(type(Pack) == "table" and type(Pack.parseIndex) == "function", "pack.lua loads")
   local externalChunk, externalErr = load(read("external.lua"), "@external.lua")
   check(externalChunk ~= nil, "external.lua parses", externalErr)
+  if externalChunk then
+    -- Two imported views alternate in battle. Once the runtime's serial passed
+    -- the cache limit, the old eviction rule dropped an atlas and a frame on
+    -- every insert even though the cache held only two entries, so both views
+    -- decoded their PNG again every frame. Repeating a warmed pair must reuse
+    -- the cached textures instead of allocating.
+    local atlasPng = read("front/27/normal.png")
+    local function importedView(id)
+      return { id = id, file = id .. ".png", size = #atlasPng, width = 64, height = 64,
+        sprite = { width = 64, height = 64, frames = 1, columns = 1, tickRate = 60,
+          durations = { 10 }, loopStartFrame = 0, cycleTicks = 10, cycleCapped = false } }
+    end
+    local fakePacks = {
+      info = function() return { source = "harness import" } end,
+      entries = function()
+        return { importedView("normal/025/front"), importedView("normal/025/back") }
+      end,
+      read = function() return atlasPng end,
+    }
+    local External = externalChunk()
+    local built = External.new(Pack, { packs = fakePacks })
+    check(built and built.runtime ~= nil, "external.lua builds a runtime from a launcher pack")
+    if built and built.runtime then
+      local function alternate(n)
+        for _ = 1, n do
+          built.runtime:frame(25, "front", false, 0)
+          built.runtime:frame(25, "back", false, 0)
+        end
+      end
+      alternate(20)
+      local dataMade, imageMade = 0, 0
+      local newImageData, newImage = love.image.newImageData, love.graphics.newImage
+      love.image.newImageData = function(...) dataMade = dataMade + 1; return newImageData(...) end
+      love.graphics.newImage = function(...) imageMade = imageMade + 1; return newImage(...) end
+      local okPair, pairErr = pcall(alternate, 20)
+      love.image.newImageData, love.graphics.newImage = newImageData, newImage
+      check(okPair and dataMade == 0 and imageMade == 0,
+        "a warmed pair of imported views reuses its atlases and frames",
+        okPair and ("data +" .. dataMade .. " images +" .. imageMade) or tostring(pairErr))
+    end
+  end
 
   local ok, index = pcall(Pack.parseIndex, indexSource, "@index.lua")
   check(ok, "the generated index parses", not ok and tostring(index))

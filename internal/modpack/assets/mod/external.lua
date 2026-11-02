@@ -202,7 +202,10 @@ end
 
 -- newest evicts one entry once the cache is full. The evicted texture or image
 -- data has to be released: dropping the Lua reference alone left the GPU copy
--- alive, so a long session collected every frame it had ever drawn.
+-- alive, so a long session collected every frame it had ever drawn. The cache
+-- is sized by its entry count, not by how many calls have happened: testing the
+-- ever-growing serial against the limit evicted an entry on every insert after
+-- the first few, so a two-atlas battle decoded both PNGs again every frame.
 local function releaseImage(item)
   if item and item.image and item.image.release then item.image:release() end
 end
@@ -210,7 +213,9 @@ local function releaseData(item)
   if item and item.data and item.data.release then item.data:release() end
 end
 local function newest(cache, limit, used, release)
-  if used < limit then return end
+  local count = 0
+  for _ in pairs(cache) do count = count + 1 end
+  if count < limit then return end
   local oldest, stamp
   for key, item in pairs(cache) do
     if not stamp or item.used < stamp then oldest, stamp = key, item.used end
