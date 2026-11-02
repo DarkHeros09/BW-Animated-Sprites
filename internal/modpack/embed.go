@@ -125,7 +125,7 @@ func externalManifest() ([]byte, error) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return nil, fmt.Errorf("embedded manifest: %w", err)
 	}
-	manifest["version"] = "1.15.1"
+	manifest["version"] = "1.15.2"
 	manifest["description"] = externalDescription
 	manifest["required_assets"] = []any{
 		map[string]any{"importer": "gen5_bw", "pack": "battle_sprites", "version": ">=1.0.0"},

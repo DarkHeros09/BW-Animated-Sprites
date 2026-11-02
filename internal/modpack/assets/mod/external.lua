@@ -120,6 +120,23 @@ local function packEntries(packs)
     local palette, nat, side, female = parseID(raw.id or "")
     if palette and nat >= 1 and nat <= 649 then
       local s, cell = validate(raw)
+      -- The exporter publishes the full-loop part tracks at the size the
+      -- composed picture actually needs, which can be a few pixels larger than
+      -- the capped atlas cell (Groudon back is 85x79 but 89x79 composed). The
+      -- picture is composed at that size, so the cell has to fit it too.
+      local width, height = s.width, s.height
+      if s.cycleCapped == true and type(s.partsEntry) == "string"
+        and (s.partsPalette == "normal" or s.partsPalette == "shiny") then
+        local meta = packs:metadata(IMPORTER, PACK, s.partsEntry)
+        if type(meta) == "table" then
+          local mw, mh = meta.width, meta.height
+          if type(mw) == "number" and mw == math.floor(mw) and mw >= 1 and mw <= MAX_SIZE
+            and type(mh) == "number" and mh == math.floor(mh) and mh >= 1 and mh <= MAX_SIZE then
+            width, height = mw, mh
+            cell = math.max(BOX, roundUp4(math.max(width, height)))
+          end
+        end
+      end
       local bySide = views[nat] or {}
       views[nat] = bySide
       local group = bySide[side] or {}
@@ -128,7 +145,7 @@ local function packEntries(packs)
       group[female and "female" or "male"] = gender
       local view = {
         id = raw.id, file = raw.file, size = raw.size,
-        width = s.width, height = s.height, columns = s.columns,
+        width = width, height = height, columns = s.columns,
         frames = s.frames, durations = s.durations, loopStart = s.loopStartFrame or 0,
         cell = cell, atlasW = raw.width, atlasH = raw.height,
         capped = s.cycleCapped == true,

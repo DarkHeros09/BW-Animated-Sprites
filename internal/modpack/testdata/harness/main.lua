@@ -79,16 +79,54 @@ local function main()
         sprite = { width = 64, height = 64, frames = 1, columns = 1, tickRate = 60,
           durations = { 10 }, loopStartFrame = 0, cycleTicks = 10, cycleCapped = false } }
     end
+    -- The exporter's part tracks can be a few pixels wider/taller than the
+    -- capped atlas cell. The composed picture is that size, so the runtime must
+    -- grow the cell from the part metadata; Groudon back is 85x79 capped but
+    -- 89x79 composed, which used to abort with "bad part metadata".
+    local function cappedView(id, atlasId, spriteW, spriteH)
+      local view = importedView(id)
+      view.width, view.height = spriteW, spriteH
+      view.sprite.width, view.sprite.height = spriteW, spriteH
+      view.sprite.cycleCapped = true
+      view.sprite.partsEntry = atlasId
+      view.sprite.partsPalette = "normal"
+      return view
+    end
+    local function partsAtlas(id, w, h)
+      return { id = id, file = id .. ".png", size = #atlasPng, width = w, height = h,
+        sprite = { kind = "parts", format = "gen5-parts", width = w, height = h,
+          frames = 1, columns = 1, tickRate = 60 },
+        metadata = { file = id .. ".lua", size = 1 } }
+    end
+    local metas = {
+      ["parts/030/front"] = { width = 68, height = 64, atlasWidth = 68, atlasHeight = 64 },
+      ["parts/031/front"] = { width = 60, height = 72, atlasWidth = 60, atlasHeight = 72 },
+    }
     local fakePacks = {
       info = function() return { source = "harness import" } end,
       entries = function()
-        return { importedView("normal/025/front"), importedView("normal/025/back") }
+        return { importedView("normal/025/front"), importedView("normal/025/back"),
+          cappedView("normal/030/front", "parts/030/front", 64, 64),
+          cappedView("normal/031/front", "parts/031/front", 60, 64),
+          partsAtlas("parts/030/front", 68, 64), partsAtlas("parts/031/front", 60, 72) }
+      end,
+      metadata = function(_, _, _, id)
+        local meta = metas[id]
+        if not meta then return nil end
+        return { format = "gen5-parts", version = 1, tickRate = 60,
+          width = meta.width, height = meta.height,
+          atlasWidth = meta.atlasWidth, atlasHeight = meta.atlasHeight }
       end,
       read = function() return atlasPng end,
     }
     local External = externalChunk()
     local built = External.new(Pack, { packs = fakePacks })
     check(built and built.runtime ~= nil, "external.lua builds a runtime from a launcher pack")
+    local e30 = built and built.index and built.index.entries[30]
+    local e31 = built and built.index and built.index.entries[31]
+    check(e30 and e30.frontSize == 68 and e31 and e31.frontSize == 72,
+      "every composed view takes its cell from its own part metadata",
+      "30=" .. tostring(e30 and e30.frontSize) .. " 31=" .. tostring(e31 and e31.frontSize))
     if built and built.runtime then
       local function alternate(n)
         for _ = 1, n do

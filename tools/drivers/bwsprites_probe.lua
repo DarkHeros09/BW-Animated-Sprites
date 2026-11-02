@@ -133,6 +133,17 @@ return function(game)
     if not ok or type(sp) ~= "number" then return nil end
     return Pokemon.frontPic(sp, 0, false)
   end
+  -- Groudon's capped back atlas is 85x79 while its part tracks compose to
+  -- 89x79; the runtime grows that cell to 92 from the metadata. Before the fix
+  -- this raised "bad part metadata for parts/383/back" during a battle draw.
+  do
+    local groudonSp = internalFor(383)
+    local gBack = groudonSp and Pokemon.backPic(groudonSp, 0, false)
+    result(type(gBack) == "table" and gBack.image ~= nil and gBack.w == 92
+      and gBack.h == 92 and gBack.animated == true,
+      "Groudon's composed back fits its grown 92px cell ("
+        .. tostring(gBack and gBack.w) .. "x" .. tostring(gBack and gBack.h) .. ")")
+  end
   local charFront = Pokemon.frontPic(ownSp, 0, false)
   result(charFront ~= nil and charFront.w == 92 and charFront.h == 92,
     "the opponent Charizard keeps its native 92px cell (" ..

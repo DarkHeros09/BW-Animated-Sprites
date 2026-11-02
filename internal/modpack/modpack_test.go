@@ -204,8 +204,8 @@ func TestAssembleExternalWritesCodeOnlyMod(t *testing.T) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		t.Fatalf("the generated manifest is not JSON: %v", err)
 	}
-	if manifest.Version != "1.15.1" {
-		t.Errorf("version %q, want 1.15.1", manifest.Version)
+	if manifest.Version != "1.15.2" {
+		t.Errorf("version %q, want 1.15.2", manifest.Version)
 	}
 	if !strings.Contains(manifest.Description, "IMPORTERS") || !strings.Contains(manifest.Description, "ships no game art") {
 		t.Errorf("the description does not explain the importer route: %q", manifest.Description)
