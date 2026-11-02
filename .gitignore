@@ -1,0 +1,22 @@
+# Local, legally obtained game dumps. These are never committed and the tools
+# only ever read them.
+*.nds
+*.gba
+*.srl
+
+# Upstream clones kept only for reading their source.
+.refs/
+
+# Go build cache, when it is pointed into the workspace.
+.cache/
+
+# Packs, coords dumps and screenshots produced under build/.
+build/
+
+# Installable mod archives; they contain sprites extracted from your own ROM.
+dist/
+
+# Regenerable output: packs and preview screenshots are rebuilt with
+# "bwsprites demo" / against your own ROM. Some hold copyrighted sprite data.
+demo/pack/
+demo/*.png

@@ -1,0 +1,21 @@
+{
+  "id": "bwsprites",
+  "name": "BW Animated Sprites",
+  "version": "1.10.0",
+  "api": 2,
+  "entry": "main.lua",
+  "profile": "content",
+  "category": "VISUAL",
+  "games": [
+    "gen3"
+  ],
+  "game_version": ">=0.0.0-0 <2.0.0",
+  "priority": 200,
+  "dependencies": [],
+  "optional_dependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "engine_internals"
+  ],
+  "description": "Replaces the Gen 3 battle pictures of every species with the animated Black/White sprite extracted from your own local Black or White dump, at the art's native size: no opponent front is scaled down or resampled, so moving wings stay sharp and wide species keep their width (up to 160x112 px). A front taller than the enemy slot is anchored at the scene top and runs behind the battle menu; the mod slides wide fronts left to keep them inside the 240 px scene. The player's back keeps its native size up to 112 px, is shifted left of the battler without touching the screen edge, and starts below the enemy healthbox so a large picture is never clipped at the top (its feet may run behind the battle menu). Every picture lands its lowest ink row on the cartridge's ground row. The Pokedex now plays the idle animation inside one fixed 64x64 fit sized by the largest pose, so it animates without changing the corrected dex size. Distinct female graphics are used for a female battler, front and back; a species without them uses its male view. Animations keep their ROM timing. Front and back, normal and shiny. The OPTION menu gains MY POKEMON and OPPONENT switches (or one BW SPRITES group) to choose BW or DEFAULT (the cartridge picture) per side; the choice is saved. Ships no game art: build the pack from a ROM you own with the bwsprites tool."
+}
