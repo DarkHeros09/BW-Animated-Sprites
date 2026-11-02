@@ -65,6 +65,8 @@ local function main()
   if not chunk then return failures end
   local Pack = chunk()
   check(type(Pack) == "table" and type(Pack.parseIndex) == "function", "pack.lua loads")
+  local externalChunk, externalErr = load(read("external.lua"), "@external.lua")
+  check(externalChunk ~= nil, "external.lua parses", externalErr)
 
   local ok, index = pcall(Pack.parseIndex, indexSource, "@index.lua")
   check(ok, "the generated index parses", not ok and tostring(index))
@@ -100,6 +102,20 @@ local function main()
     check(at(30) == 2 and at(45) == 3 and at(55) == 2,
       "the loop resumes at loopStart+1 instead of replaying the intro",
       ("%d/%d/%d"):format(at(30), at(45), at(55)))
+    -- A minute of play must not change the pose for a given tick: walking the
+    -- whole elapsed clock made draws slower the longer the session ran.
+    check(at(60000 + 10) == 2 and at(60000 + 45) == 3 and at(60000 + 55) == 2,
+      "the clock reduces modulo the cycle at long uptimes",
+      ("%d/%d/%d"):format(at(60000 + 10), at(60000 + 45), at(60000 + 55)))
+    local function timed(ticks)
+      local started = os.clock()
+      for _ = 1, 20000 do Pack.frameIndexTicks(view, ticks) end
+      return os.clock() - started
+    end
+    local short, long = timed(10), timed(1000000000)
+    check(long <= short * 3 + 0.1,
+      "an hour of play does not make the frame clock slower",
+      ("%.4fs vs %.4fs"):format(short, long))
 
     local first = runtime:frameImage(view, 1)
     local second = runtime:frameImage(view, 2)

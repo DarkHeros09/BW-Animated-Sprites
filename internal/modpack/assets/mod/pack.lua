@@ -200,22 +200,34 @@ function Pack:view(nat, side, shiny, female)
   return view
 end
 
--- frameIndex maps a wall-clock instant onto the view's frames, playing the
--- intro once and then looping from loopStart+1, the order the pack records.
-function Pack:frameIndex(view, now)
-  local rate = self.index.tickRate or 60
-  local t = math.floor((now or self.now()) * rate)
+-- frameIndexTicks maps an elapsed tick count onto the view's frames. The intro
+-- (frames 1..loopStart) plays once and the rest loops from loopStart+1, so the
+-- clock is reduced modulo the looping part; walking every elapsed tick instead
+-- made each draw cost more the longer the game had been running.
+function Pack.frameIndexTicks(view, t)
+  local intro, cycle = 0, 0
+  local loop = view.loopStart or 0
+  for i, duration in ipairs(view.durations) do
+    if i <= loop then intro = intro + duration else cycle = cycle + duration end
+  end
+  if cycle <= 0 then cycle = intro end
+  local paint = t
   local i = 1
-  -- Play the intro once, then keep looping from loopStart+1. Subtracting the
-  -- intro from the clock instead of taking it modulo the whole cycle is what
-  -- keeps frame 1 from reappearing on every lap.
+  if t >= intro then
+    paint = intro + (t - intro) % cycle
+  end
   while true do
     local duration = view.durations[i]
-    if t < duration then return i end
-    t = t - duration
+    if paint < duration then return i end
+    paint = paint - duration
     i = i + 1
-    if i > view.frames then i = view.loopStart + 1 end
+    if i > view.frames then i = loop + 1 end
   end
+end
+
+function Pack:frameIndex(view, now)
+  local rate = self.index.tickRate or 60
+  return Pack.frameIndexTicks(view, math.floor((now or self.now()) * rate))
 end
 
 -- frameImage cuts one frame out of the sheet's grid, once per view and index.

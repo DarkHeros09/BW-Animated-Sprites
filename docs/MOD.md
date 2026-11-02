@@ -138,7 +138,7 @@ engine records this as `modsByVersion.<game>["bwsprites"] = true` in
 `options.lua`). The mod logs one line when it loads:
 
 ```
-[bwsprites] bwsprites: 649 species, 1490 views (192 female), 30807 frames from Pokemon Black (IRBO) (2/2 sides on BW, native cells, fixed origin)
+[bwsprites] bwsprites: 649 species, 2596 views (1298 female), 53618 frames from Pokemon Black (IRBO) (2/2 sides on BW, native cells, fixed origin)
 ```
 
 If that line is missing the mod did not load; if it reports 0 species the pack is
@@ -154,16 +154,23 @@ other games' art the first time it is needed, which hitches a battle or a map
 entry; PREBUILD spreads that work over frames and `diskcache.lua` keeps the
 results for the next start (`prebuild.lua:1-12`, `diskcache.lua:1-12`).
 
-This mod does not build pictures. The launcher's importer, or `modpack`, already
-wrote one animation atlas per view; the mod decodes an atlas the first time a
-species is seen and cuts each frame once. The embedded runtime keeps those
-frames per view (`pack.lua:221-240`); the imported runtime keeps a small LRU of
-atlases and frames (`external.lua:192-248`). After that, a frame is a table
-lookup plus `Pack.frameIndex`, not an image build. A facets-style prebuild would
-decode all 2,596 views up front — hundreds of megabytes of RGBA for no steady
-state gain — so it is deliberately not an option. If a low-end handheld shows a
-one-off hitch on the first encounter, pre-decoding that battler's atlas before
-the battle transition is the small fix; a full install cache is not.
+Mostly it does not. The launcher's importer, or `modpack`, already wrote one
+animation atlas per view; the mod decodes an atlas the first time a species is
+seen and cuts each frame once. The embedded runtime keeps those frames per view
+(`pack.lua:221-240`); the imported runtime keeps a small LRU of atlases and
+frames (`external.lua`). After that, a frame is a table lookup plus
+`Pack.frameIndexTicks`, not an image build.
+
+The exception is the imported pack's capped views: the exporter stops their atlas
+at 240 ticks but ships part tracks for the rest of the cycle, and the code-only
+build composes those poses from the pieces on demand. Composing one 89x91
+Charizard pose costs about 0.4 ms; results are cached by the tracks' state
+signature (many ticks repeat a pose), so steady-state playback is cache hits. A
+full prebuild would decode all 2,596 views up front — hundreds of megabytes of
+RGBA for no steady-state gain — so it is deliberately not an option. If a
+low-end handheld shows a one-off hitch on the first encounter, pre-decoding that
+battler's atlas before the battle transition is the small fix; a full install
+cache is not.
 
 ## Switching back to cartridge art
 
@@ -300,9 +307,14 @@ back, and a frame change between two captures, and writes the screenshots under
 - **Forms and special cases.** Form-specific art (Castform, Deoxys, Unown
   letters) is not exported; those species show the cartridge picture unless their
   base national id is served.
-- **Code-only build: 240-tick prefix for some views.** The launcher's exporter
-  1.1.0 caps 360 imported views at 240 ticks (4 s). They play the exported prefix
-  and loop; the embedded build has full cycles.
+- **Code-only build: capped views are composed from part tracks.** The launcher's
+  exporter 1.1.0 caps 360 imported views at 240 ticks (4 s) in their atlas but
+  ships part tracks covering the full cycle (Charizard's tracks run 432 ticks).
+  The code-only build composes those views from the tracks, matching the
+  exporter's atlas pixel-for-pixel inside the prefix (checked with a LÖVE probe),
+  so they play the full cycle like the embedded build. Only a pack with a capped
+  view and no part track falls back to the 240-tick prefix, and the mod logs how
+  many did.
 - **One animation per species.** The idle animation only. Move animations stay
   the cartridge's for unserved species and are suppressed for served ones, so a
   served species does not animate during a move; the idle loop keeps playing.

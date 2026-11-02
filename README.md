@@ -138,7 +138,14 @@ go run ./cmd/bwsprites install -external -identity pokemon-love2d
 
 The code-only build ships no game art. It reads
 `asset_packs/gen5_bw/battle_sprites` from the save identity through
-`mod.packs`; if the import is missing it refuses to load and says so.
+`mod.packs`; if the import is missing it refuses to load and says so. It has the
+same native cells, native animated Pokedex and female art as the embedded build.
+Views the exporter capped at 240 ticks are composed from the pack's own part
+tracks, so long idles play their whole cycle instead of the prefix.
+
+Runtime cost is bounded: the frame clock reduces modulo the loop instead of
+walking every elapsed tick, and evicted atlases, frames and composed poses are
+released instead of leaking GPU textures.
 
 `-identity` is the LÖVE save folder (`POKEPORT_IDENTITY`, default
 `pokemon-love2d`); `-mods DIR` overrides the whole path and `-force` replaces an

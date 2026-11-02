@@ -112,7 +112,7 @@ func AssembleExternal(out string, force bool) (*AssembleReport, error) {
 // externalDescription is the manifest text for the code-only build. It must not
 // promise a bundled pack or a BW2 route: the launcher importer handles Black and
 // White only.
-const externalDescription = "Replaces the Gen 3 battle pictures and Pokedex entry with the animated Black/White battle sprites that the launcher's IMPORTERS screen extracted from your own unzipped 256 MiB Black or White dump. This build ships no game art and no sprite pack: the mod reads the imported gen5_bw battle_sprites pack, so import Black/White in IMPORTERS first and restart. Every view plays at the art's native size; a picture taller than the enemy slot is anchored at the scene top and runs behind the battle menu, wide fronts are kept inside the 240 px scene, and the player's back starts below the enemy healthbox. The Pokedex plays the idle animation at native size, centred in the card's picture area. Distinct female graphics are used front and back. The OPTION menu gains MY POKEMON and OPPONENT switches (BW or DEFAULT) and the choice is saved. Black 2/White 2 dumps are not supported by the launcher importer; use the BW2 build for those."
+const externalDescription = "Replaces the Gen 3 battle pictures and Pokedex entry with the animated Black/White battle sprites that the launcher's IMPORTERS screen extracted from your own unzipped 256 MiB Black or White dump. This build ships no game art and no sprite pack: the mod reads the imported gen5_bw battle_sprites pack, so import Black/White in IMPORTERS first and restart. Every view plays at the art's native size; a picture taller than the enemy slot is anchored at the scene top and runs behind the battle menu, wide fronts are kept inside the 240 px scene, and the player's back starts below the enemy healthbox. Views the exporter capped at 240 ticks are composed from the pack's own part tracks, so long idles play their full cycle. The Pokedex plays the idle animation at native size, centred in the card's picture area. Distinct female graphics are used front and back. The OPTION menu gains MY POKEMON and OPPONENT switches (BW or DEFAULT) and the choice is saved. Black 2/White 2 dumps are not supported by the launcher importer; use the BW2 build for those."
 
 // externalManifest derives the code-only manifest from the embedded one, so
 // identity, entry point, profile and permissions stay in one place.
@@ -125,7 +125,7 @@ func externalManifest() ([]byte, error) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return nil, fmt.Errorf("embedded manifest: %w", err)
 	}
-	manifest["version"] = "1.14.0"
+	manifest["version"] = "1.15.0"
 	manifest["description"] = externalDescription
 	manifest["required_assets"] = []any{
 		map[string]any{"importer": "gen5_bw", "pack": "battle_sprites", "version": ">=1.0.0"},

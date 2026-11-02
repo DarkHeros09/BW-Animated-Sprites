@@ -330,10 +330,10 @@ return function(game)
     "the foe picture changed between captures")
 
   local dex = Pokemon.dexFrontPic(foeSp, 0)
-  result(type(dex) == "table" and dex.image ~= nil and dex.w == 64 and dex.h == 64
-    and dex.image:getWidth() == 64 and dex.image:getHeight() == 64,
-    "the Pokedex picture is the pack frame fitted to " .. tostring(dex and dex.w) .. "x" ..
-      tostring(dex and dex.h))
+  result(type(dex) == "table" and dex.image ~= nil and dex.w == dex.image:getWidth()
+    and dex.h == dex.image:getHeight() and dex.w >= 32 and dex.h >= 32,
+    "the Pokedex picture is served at its native size (" .. tostring(dex and dex.w) .. "x" ..
+      tostring(dex and dex.h) .. ")")
   if dex and dex.image then
     local w, h = inkSize(dex.image)
     result(w >= 35 and h >= 40,
@@ -356,8 +356,8 @@ return function(game)
       end
       U.wait(4)
     end
-    result(maxH >= 60 and maxW >= 55,
-      "Charizard's dex peak pose uses the 64px box (" .. maxW .. "x" .. maxH .. ")")
+    result(maxH >= 60 and maxW >= 55 and dexChar.w > 64,
+      "Charizard's dex peak pose is native (" .. maxW .. "x" .. maxH .. ")")
     result(dexChanged, "the Pokedex picture animates instead of staying on one pose")
   else
     result(false, "Charizard's dex picture resolves")

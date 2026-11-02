@@ -66,7 +66,7 @@ else
   index, runtime = external.index, external.runtime
   backend = "imported"
   if external.capped and external.capped > 0 then
-    mod.log:warn("bwsprites: %d imported views stop at the exporter's 240 tick prefix; reimport with exporter 1.1.0 or newer for the longest loops", external.capped)
+    mod.log:warn("bwsprites: %d imported views have no part tracks and play the 240 tick prefix", external.capped)
   end
 end
 
