@@ -120,23 +120,11 @@ local function packEntries(packs)
     local palette, nat, side, female = parseID(raw.id or "")
     if palette and nat >= 1 and nat <= 649 then
       local s, cell = validate(raw)
-      -- The exporter publishes the full-loop part tracks at the size the
-      -- composed picture actually needs, which can be a few pixels larger than
-      -- the capped atlas cell (Groudon back is 85x79 but 89x79 composed). The
-      -- picture is composed at that size, so the cell has to fit it too.
-      local width, height = s.width, s.height
-      if s.cycleCapped == true and type(s.partsEntry) == "string"
-        and (s.partsPalette == "normal" or s.partsPalette == "shiny") then
-        local meta = packs:metadata(IMPORTER, PACK, s.partsEntry)
-        if type(meta) == "table" then
-          local mw, mh = meta.width, meta.height
-          if type(mw) == "number" and mw == math.floor(mw) and mw >= 1 and mw <= MAX_SIZE
-            and type(mh) == "number" and mh == math.floor(mh) and mh >= 1 and mh <= MAX_SIZE then
-            width, height = mw, mh
-            cell = math.max(BOX, roundUp4(math.max(width, height)))
-          end
-        end
-      end
+      -- The exporter can publish the full-loop part tracks at a size a few
+      -- pixels larger than the capped atlas cell (Groudon back is 85x79 but
+      -- 89x79 composed). Reading all of that metadata at boot delayed startup,
+      -- so the view keeps its atlas size until it is first used; ensureSized
+      -- then takes the real size from the view's own part metadata.
       local bySide = views[nat] or {}
       views[nat] = bySide
       local group = bySide[side] or {}
@@ -145,7 +133,8 @@ local function packEntries(packs)
       group[female and "female" or "male"] = gender
       local view = {
         id = raw.id, file = raw.file, size = raw.size,
-        width = width, height = height, columns = s.columns,
+        nat = nat, side = side, female = female, palette = palette,
+        width = s.width, height = s.height, columns = s.columns,
         frames = s.frames, durations = s.durations, loopStart = s.loopStartFrame or 0,
         cell = cell, atlasW = raw.width, atlasH = raw.height,
         capped = s.cycleCapped == true,
@@ -170,6 +159,9 @@ local function packEntries(packs)
       local part = parts[view.parts]
       if part then
         view.partsAtlas = part
+        -- Its composed size can differ from the capped atlas cell; read that
+        -- view's metadata on first use, not for all 104 of them at startup.
+        view.pendingSize = true
       else
         view.parts = nil
         capped = capped + 1
@@ -244,13 +236,50 @@ local function newest(cache, limit, used, release)
   end
 end
 
-local function newRuntime(packs, views)
-  local self = { packs = packs, views = views, atlases = {}, frames = {}, dex = {}, boxes = {},
-    plans = {}, pixels = {}, partImages = {}, partCells = {}, serial = 0,
+local function newRuntime(packs, views, index)
+  local self = { packs = packs, views = views, index = index,
+    atlases = {}, frames = {}, dex = {}, boxes = {},
+    plans = {}, pixels = {}, partImages = {}, partCells = {}, metaSizes = {}, serial = 0,
     now = function()
       return love.timer and love.timer.getTime and love.timer.getTime() or os.clock()
     end }
   return setmetatable(self, { __index = External })
+end
+
+-- ensureSized takes a composed view's real size from its part metadata the
+-- first time that view is used. The exporter can publish it a few pixels larger
+-- than the capped atlas cell, and the cell, index size and Pokedex box all have
+-- to agree. Reading every metadata file at boot made startup slow, so this is
+-- lazy and cached per parts entry; a view that is never drawn costs nothing.
+function External:ensureSized(view)
+  if not view.pendingSize then return view end
+  view.pendingSize = nil
+  local meta = self.metaSizes[view.parts]
+  if meta == nil then
+    local ok, value = pcall(self.packs.metadata, self.packs, IMPORTER, PACK, view.parts)
+    meta = (ok and type(value) == "table") and value or false
+    self.metaSizes[view.parts] = meta
+  end
+  if type(meta) ~= "table" then return view end
+  local mw, mh = meta.width, meta.height
+  if type(mw) ~= "number" or mw ~= math.floor(mw) or mw < 1 or mw > MAX_SIZE
+    or type(mh) ~= "number" or mh ~= math.floor(mh) or mh < 1 or mh > MAX_SIZE then
+    return view
+  end
+  local cell = math.max(BOX, roundUp4(math.max(mw, mh)))
+  if cell > MAX_SIZE then
+    error("bwsprites imported pack: " .. view.parts .. " cell is too large", 0)
+  end
+  if mw == view.width and mh == view.height and cell == view.cell then return view end
+  view.width, view.height, view.cell = mw, mh, cell
+  local entry = self.index and self.index.entries[view.nat]
+  if entry then
+    local prefix = view.side .. (view.female and "Female" or "")
+    entry[prefix .. "Size"] = cell
+    entry[prefix .. "InkH"] = mh
+    entry[prefix .. "Dex"] = { x = 0, y = 0, w = mw, h = mh }
+  end
+  return view
 end
 
 function External:viewFor(nat, side, shiny, female)
@@ -258,7 +287,7 @@ function External:viewFor(nat, side, shiny, female)
   if not group then return nil end
   local gender = (female and group.female) or group.male
   if not gender then return nil end
-  return (shiny and (gender.shiny or gender.normal)) or gender.normal
+  return self:ensureSized((shiny and (gender.shiny or gender.normal)) or gender.normal)
 end
 
 function External:serves(nat, side, female)
@@ -334,10 +363,16 @@ end
 -- atlas x,y), then one track per moving layer with intro/period and run-length
 -- state indexes. Everything is checked here so a corrupt pack fails loudly.
 function External:partsPlan(view)
+  self:ensureSized(view)
   local hit = self.plans[view.parts]
   self.serial = self.serial + 1
   if hit then hit.used = self.serial; return hit.plan end
-  local meta, err = self.packs:metadata(IMPORTER, PACK, view.parts)
+  local meta = self.metaSizes[view.parts]
+  local err
+  if meta == nil then
+    meta, err = self.packs:metadata(IMPORTER, PACK, view.parts)
+    if type(meta) == "table" then self.metaSizes[view.parts] = meta end
+  end
   if type(meta) ~= "table" then error(err or "missing imported part tracks", 0) end
   local part = view.partsAtlas
   if meta.format ~= "gen5-parts" or meta.version ~= 1 or meta.tickRate ~= TICK_RATE
@@ -624,10 +659,11 @@ function External.new(packModule, engineMod)
   end
   local ok, views, capped, parts = pcall(packEntries, packs)
   if not ok then return nil, tostring(views) end
-  local runtime = newRuntime(packs, views)
+  local index = buildIndex(views, info)
+  local runtime = newRuntime(packs, views, index)
   runtime.partsEntries = parts
   return {
-    index = buildIndex(views, info),
+    index = index,
     runtime = runtime,
     capped = capped,
   }

@@ -122,6 +122,11 @@ local function main()
     local External = externalChunk()
     local built = External.new(Pack, { packs = fakePacks })
     check(built and built.runtime ~= nil, "external.lua builds a runtime from a launcher pack")
+    if built and built.runtime then
+      -- Sizing is lazy: first use, not boot, reads the part metadata.
+      built.runtime:serves(30, "front", false)
+      built.runtime:serves(31, "front", false)
+    end
     local e30 = built and built.index and built.index.entries[30]
     local e31 = built and built.index and built.index.entries[31]
     check(e30 and e30.frontSize == 68 and e31 and e31.frontSize == 72,

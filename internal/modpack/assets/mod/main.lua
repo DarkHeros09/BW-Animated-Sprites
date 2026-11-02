@@ -420,8 +420,15 @@ local function serve(side, species, shiny, female)
   local entryIndex = index.entries[nat]
   local prefix = viewPrefix(side, female)
   local size = entryIndex and entryIndex[prefix .. "Size"]
-  local total = sp and (female and size and offsetFor(side, prefix, entryIndex, size,
-    (savedOffsets[side] and savedOffsets[side][sp]) or 0, sp) or corrections[side][sp]) or nil
+  -- A composed view learns its real cell size on first use, so compute the
+  -- padding from the current index entry instead of the value cached at boot.
+  local total
+  if sp and size and entryIndex then
+    total = offsetFor(side, prefix, entryIndex, size,
+      (savedOffsets[side] and savedOffsets[side][sp]) or 0, sp)
+  elseif sp then
+    total = corrections[side][sp]
+  end
   if table_ and total ~= nil and table_[sp] ~= total then table_[sp] = total end
   local now = love.timer and love.timer.getTime and love.timer.getTime() or os.clock()
   local entry, err = runtime:frame(nat, side, shiny, now, female)
