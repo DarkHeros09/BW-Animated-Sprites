@@ -190,7 +190,9 @@ return function(game)
       love.graphics.clear(0, 0, 0, 0)
       love.graphics.setBlendMode("replace")
       love.graphics.setColor(1, 1, 1, 1)
-      love.graphics.draw(image, 0, 0)
+      -- Explicit origin 0,0 so the mod's Pokedex placement wrapper leaves the
+      -- measurement alone; a bare draw would be moved into the card area.
+      love.graphics.draw(image, 0, 0, 0, 1, 1, 0, 0)
       love.graphics.pop()
     end)
     local data = canvas:newImageData()

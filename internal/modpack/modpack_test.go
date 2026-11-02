@@ -1,6 +1,7 @@
 package modpack
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ func TestModFiles(t *testing.T) {
 	for _, f := range files {
 		have[f] = true
 	}
-	for _, want := range []string{"manifest.json", "main.lua", "pack.lua"} {
+	for _, want := range []string{"manifest.json", "main.lua", "pack.lua", "external.lua"} {
 		if !have[want] {
 			t.Errorf("embedded mod is missing %s (have %v)", want, files)
 		}
@@ -146,8 +147,8 @@ func TestAssembleWritesModAndPack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.ModFiles != 3 || report.PackFiles != 2 {
-		t.Fatalf("report %+v, want 3 mod files and 2 pack files", report)
+	if report.ModFiles != 4 || report.PackFiles != 2 {
+		t.Fatalf("report %+v, want 4 mod files and 2 pack files", report)
 	}
 	for _, rel := range []string{"manifest.json", "main.lua", "pack.lua", "index.lua", "front/1/normal.png"} {
 		if _, err := os.Stat(filepath.Join(out, filepath.FromSlash(rel))); err != nil {
@@ -165,6 +166,61 @@ func TestAssembleWritesModAndPack(t *testing.T) {
 		t.Fatalf("assembling over an existing directory: %v", err)
 	}
 	if _, err := Assemble(pack, out, true); err != nil {
+		t.Fatalf("assembling with force: %v", err)
+	}
+}
+
+func TestAssembleExternalWritesCodeOnlyMod(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(root, "mod")
+	report, err := AssembleExternal(out, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.ModFiles != 4 || report.PackFiles != 0 {
+		t.Fatalf("report %+v, want 4 mod files and no pack files", report)
+	}
+	for _, rel := range []string{"manifest.json", "main.lua", "pack.lua", "external.lua"} {
+		if _, err := os.Stat(filepath.Join(out, rel)); err != nil {
+			t.Errorf("%s was not written: %v", rel, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(out, "index.lua")); !os.IsNotExist(err) {
+		t.Errorf("the code-only mod embeds a pack index: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Version        string `json:"version"`
+		Description    string `json:"description"`
+		RequiredAssets []struct {
+			Importer string `json:"importer"`
+			Pack     string `json:"pack"`
+			Version  string `json:"version"`
+		} `json:"required_assets"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("the generated manifest is not JSON: %v", err)
+	}
+	if manifest.Version != "1.14.0" {
+		t.Errorf("version %q, want 1.14.0", manifest.Version)
+	}
+	if !strings.Contains(manifest.Description, "IMPORTERS") || !strings.Contains(manifest.Description, "ships no game art") {
+		t.Errorf("the description does not explain the importer route: %q", manifest.Description)
+	}
+	if len(manifest.RequiredAssets) != 1 {
+		t.Fatalf("required_assets %+v, want one entry", manifest.RequiredAssets)
+	}
+	asset := manifest.RequiredAssets[0]
+	if asset.Importer != "gen5_bw" || asset.Pack != "battle_sprites" || asset.Version != ">=1.0.0" {
+		t.Errorf("required_assets entry %+v, want gen5_bw/battle_sprites >=1.0.0", asset)
+	}
+	if _, err := AssembleExternal(out, false); err == nil || !strings.Contains(err.Error(), "not empty") {
+		t.Fatalf("assembling over an existing directory: %v", err)
+	}
+	if _, err := AssembleExternal(out, true); err != nil {
 		t.Fatalf("assembling with force: %v", err)
 	}
 }

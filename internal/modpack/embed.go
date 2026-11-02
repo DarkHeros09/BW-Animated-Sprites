@@ -2,6 +2,7 @@ package modpack
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -70,7 +71,7 @@ func Assemble(packDir, out string, force bool) (*AssembleReport, error) {
 		return nil, err
 	}
 	report := &AssembleReport{}
-	if err := copyEmbedded(out, report); err != nil {
+	if err := copyEmbedded(out, report, false); err != nil {
 		return nil, err
 	}
 	if packDir != "" {
@@ -79,6 +80,57 @@ func Assemble(packDir, out string, force bool) (*AssembleReport, error) {
 		}
 	}
 	return report, nil
+}
+
+// AssembleExternal writes the code-only build: the same Lua, a generated
+// manifest that requires the launcher's imported gen5_bw pack instead of a local
+// sprite tree, and no pack files. Use it for a Black/White dump extracted by the
+// launcher's IMPORTERS screen; the ROM and its art never enter the mod.
+func AssembleExternal(out string, force bool) (*AssembleReport, error) {
+	if out == "" {
+		return nil, fmt.Errorf("missing destination directory")
+	}
+	if err := prepare(out, force); err != nil {
+		return nil, err
+	}
+	report := &AssembleReport{}
+	if err := copyEmbedded(out, report, true); err != nil {
+		return nil, err
+	}
+	data, err := externalManifest()
+	if err != nil {
+		return nil, err
+	}
+	if err := writeFileAtomic(filepath.Join(out, "manifest.json"), data); err != nil {
+		return nil, err
+	}
+	report.ModFiles++
+	report.Bytes += int64(len(data))
+	return report, nil
+}
+
+// externalDescription is the manifest text for the code-only build. It must not
+// promise a bundled pack or a BW2 route: the launcher importer handles Black and
+// White only.
+const externalDescription = "Replaces the Gen 3 battle pictures and Pokedex entry with the animated Black/White battle sprites that the launcher's IMPORTERS screen extracted from your own unzipped 256 MiB Black or White dump. This build ships no game art and no sprite pack: the mod reads the imported gen5_bw battle_sprites pack, so import Black/White in IMPORTERS first and restart. Every view plays at the art's native size; a picture taller than the enemy slot is anchored at the scene top and runs behind the battle menu, wide fronts are kept inside the 240 px scene, and the player's back starts below the enemy healthbox. The Pokedex plays the idle animation at native size, centred in the card's picture area. Distinct female graphics are used front and back. The OPTION menu gains MY POKEMON and OPPONENT switches (BW or DEFAULT) and the choice is saved. Black 2/White 2 dumps are not supported by the launcher importer; use the BW2 build for those."
+
+// externalManifest derives the code-only manifest from the embedded one, so
+// identity, entry point, profile and permissions stay in one place.
+func externalManifest() ([]byte, error) {
+	raw, err := embedded.ReadFile(modRoot + "/manifest.json")
+	if err != nil {
+		return nil, err
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return nil, fmt.Errorf("embedded manifest: %w", err)
+	}
+	manifest["version"] = "1.14.0"
+	manifest["description"] = externalDescription
+	manifest["required_assets"] = []any{
+		map[string]any{"importer": "gen5_bw", "pack": "battle_sprites", "version": ">=1.0.0"},
+	}
+	return json.MarshalIndent(manifest, "", "  ")
 }
 
 // checkPack fails early, with the command that builds a pack, when packDir is
@@ -116,13 +168,17 @@ func sameOrInside(a, b string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// copyEmbedded writes the mod resources into out.
-func copyEmbedded(out string, report *AssembleReport) error {
+// copyEmbedded writes the mod resources into out. skipManifest lets
+// AssembleExternal replace the embedded manifest with its generated one.
+func copyEmbedded(out string, report *AssembleReport, skipManifest bool) error {
 	return fs.WalkDir(embedded, modRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
+			return nil
+		}
+		if skipManifest && d.Name() == "manifest.json" {
 			return nil
 		}
 		data, err := embedded.ReadFile(p)

@@ -112,8 +112,11 @@ love build/pack
 
 ## Installing the mod
 
-The mod is a folder the engine's mod loader reads from its save identity. Build
-the data, then let the tool place it:
+There are two builds. The **embedded** one ships the extracted art inside the
+mod and needs no launcher import; the **code-only** one ships four Lua/JSON files
+and reads the launcher's own Black/White import.
+
+Embedded (Black/White or Black 2/White 2):
 
 ```sh
 go run ./cmd/bwsprites modpack -rom "BLACK.nds" -out build/modpack
@@ -125,6 +128,18 @@ The same commands read a Black 2/White 2 dump (`IRD*`/`IRE*`, an untrimmed
 it unchanged. One mod is installed at a time, so a Black 2 build replaces a
 Black build's art in the same folder.
 
+Code-only (Black/White only; the launcher's importer rejects Black 2/White 2):
+
+```sh
+# Once in the launcher: IMPORTERS -> Pokemon Black / White, pick your own
+# untrimmed 256 MiB dump. Then:
+go run ./cmd/bwsprites install -external -identity pokemon-love2d
+```
+
+The code-only build ships no game art. It reads
+`asset_packs/gen5_bw/battle_sprites` from the save identity through
+`mod.packs`; if the import is missing it refuses to load and says so.
+
 `-identity` is the LÖVE save folder (`POKEPORT_IDENTITY`, default
 `pokemon-love2d`); `-mods DIR` overrides the whole path and `-force` replaces an
 existing install. Then enable **BW Animated Sprites** in the game's mod menu.
@@ -134,6 +149,8 @@ To hand the mod to someone (or to install it from the launcher's **Import mod
 
 ```sh
 go run ./cmd/bwsprites mod -pack build/modpack -out build/bwsprites -zip dist/bwsprites.zip
+# Code-only instead (four files, no PNGs):
+go run ./cmd/bwsprites mod -external -out build/bwsprites-bw -zip dist/bwsprites-bw.zip
 ```
 
 The archive holds exactly one top-level folder, `bwsprites/`, with
@@ -189,8 +206,8 @@ bwsprites export -rom ROM.nds -out DIR [-dex LIST] [-side both] [-palette both]
                  [-frame 0] [-ground -1] [-coords FILE] [-force]
 bwsprites coords -rom ROM.gba -game GAME -out FILE [table flags]
 bwsprites modpack -rom ROM.nds -out DIR [-dex LIST] [-side both] [-palette both] [-force]
-bwsprites mod     -pack DIR -out DIR [-zip FILE] [-force]
-bwsprites install -pack DIR [-identity NAME] [-mods DIR] [-force]
+bwsprites mod     -pack DIR | -external -out DIR [-zip FILE] [-force]
+bwsprites install -pack DIR | -external [-identity NAME] [-mods DIR] [-force]
 bwsprites verify -pack DIR
 bwsprites demo   -out DIR [-force]
 ```
@@ -294,7 +311,7 @@ mod pack's PNGs back and checks every animation's ink centre and ground row.
 | nothing renders but validation passes | press `d`: the union box shows where content is, and `grounded: false` means the sprite was pinned to the top |
 | the mod is not listed in the game | it was installed into a different save identity; pass `-identity <name>` (or `-mods <dir>`) |
 | battle sprites do not change | the mod is installed but not enabled in the mod menu; the load log line names the species it serves |
-| the mod loads with 0 species | the installed folder has no `index.lua`; reinstall with `bwsprites install -force` |
+| the mod loads with 0 species | embedded build: the installed folder has no `index.lua`; reinstall with `bwsprites install -force`. Code-only build: the identity has no `asset_packs/gen5_bw/battle_sprites`, so import the dump in the launcher first |
 
 ## Limitations
 

@@ -29,18 +29,45 @@ if not Pack then
   return
 end
 
+-- Two builds share this file. The BW2 build ships an embedded index.lua and
+-- PNGs; the asset-free BW build ships neither and reads the launcher's own
+-- gen5_bw/battle_sprites pack instead. A missing index is therefore not an
+-- error until the imported pack is also unavailable.
 local indexPath = "index.lua"
 local indexSource = mod:read(indexPath)
-if type(indexSource) ~= "string" or indexSource == "" then
-  mod.log:error("bwsprites: no sprite pack found (%s is missing). Build one with " ..
-    "'bwsprites modpack -rom <Black or White ROM> -out <dir>' and install it with " ..
-    "'bwsprites install -pack <dir>'; the mod stays off.", indexPath)
-  return
-end
-local okIndex, index = pcall(Pack.parseIndex, indexSource, "@" .. mod.path .. "/" .. indexPath)
-if not okIndex then
-  mod.log:error("bwsprites: %s", tostring(index))
-  return
+local runtime, index, backend
+if type(indexSource) == "string" and indexSource ~= "" then
+  local okIndex, parsed = pcall(Pack.parseIndex, indexSource, "@" .. mod.path .. "/" .. indexPath)
+  if not okIndex then
+    mod.log:error("bwsprites: %s", tostring(parsed))
+    return
+  end
+  index = parsed
+  runtime = Pack.newRuntime(index, {
+    read = function(relative) return mod:read(relative) end,
+    path = function(relative) return mod.assets:path(relative) end,
+  })
+  backend = "embedded"
+else
+  local External, externalErr = loadPart("external.lua")
+  if not External then
+    mod.log:error("bwsprites: the asset-free reader is missing: %s", tostring(externalErr))
+    return
+  end
+  local okExternal, external, externalNewErr = pcall(External.new, Pack, mod)
+  if not okExternal then
+    mod.log:error("bwsprites: the imported Black/White pack could not be read: %s", tostring(external))
+    return
+  end
+  if not external then
+    mod.log:error("bwsprites: this build has no sprite pack and no launcher import: %s", tostring(externalNewErr))
+    return
+  end
+  index, runtime = external.index, external.runtime
+  backend = "imported"
+  if external.capped and external.capped > 0 then
+    mod.log:warn("bwsprites: %d imported views stop at the exporter's 240 tick prefix; reimport with exporter 1.1.0 or newer for the longest loops", external.capped)
+  end
 end
 
 -- PIC_CENTRE is the patched engine's promise that every picture is drawn
@@ -159,11 +186,6 @@ love.graphics.draw = function(drawable, x, y, r, sx, sy, ox, oy, kx, ky)
   end
   return engineDraw(drawable, x, y, r, sx, sy, ox, oy, kx, ky)
 end
-
-local runtime = Pack.newRuntime(index, {
-  read = function(relative) return mod:read(relative) end,
-  path = function(relative) return mod.assets:path(relative) end,
-})
 
 local okP, Pokemon = pcall(require, "src.core.game3.pokemon")
 if not okP or type(Pokemon) ~= "table" then

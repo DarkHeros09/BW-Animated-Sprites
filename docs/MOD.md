@@ -4,7 +4,8 @@ This repository ships an installable mod for the LÖVE-based
 [gen1recomp](https://github.com/bryanthaboi/gen1recomp) engine: it replaces the
 battle pictures of FireRed, LeafGreen and Emerald with animated Black/White
 sprites. It is **not** a patch of the GBA ROM — the ROM is never read by the mod
-and the engine is never rebuilt. The mod is plain Lua plus PNG data, loaded by the
+and the engine is never rebuilt. The mod is plain Lua plus PNG data in its
+embedded form, or four Lua/JSON files in its code-only form, loaded by the
 engine's own mod loader.
 
 ## What it changes
@@ -107,7 +108,17 @@ go run ./cmd/bwsprites mod -pack build/modpack -out build/bwsprites
 
 # 2c. Or build the installable .zip the launcher's "Import mod .zip" takes:
 go run ./cmd/bwsprites mod -pack build/modpack -out build/bwsprites -zip dist/bwsprites.zip
+
+# 3. Code-only build (Black/White only): no art in the mod. Import the dump once
+#    in the launcher's IMPORTERS screen, then install just the reader:
+go run ./cmd/bwsprites install -external -identity pokemon-love2d
+go run ./cmd/bwsprites mod -external -out build/bwsprites-bw -zip dist/bwsprites-bw.zip
 ```
+
+The code-only build writes four files (`manifest.json`, `main.lua`, `pack.lua`,
+`external.lua`) and declares the imported pack as a required asset. It reads
+`asset_packs/gen5_bw/battle_sprites` through `mod.packs`; the launcher rejects
+Black 2/White 2, so that pair needs the embedded build.
 
 The installer accepts one shape only: either `manifest.json` at the archive
 root, or exactly one top-level folder holding it
@@ -134,6 +145,25 @@ If that line is missing the mod did not load; if it reports 0 species the pack i
 missing from the installed folder. `native cells` in the log means "not
 compatibility-scaled"; cells are 64..256 px, the art's own size, and
 the count in parentheses is the number of extra female views.
+
+### Prebuild and cache: not needed here
+
+Facets has a **PREBUILD** option and an install cache because it *builds* each
+picture: a GB Emerald Pokémon, a GBC NPC or a Crystal frame is composed from
+other games' art the first time it is needed, which hitches a battle or a map
+entry; PREBUILD spreads that work over frames and `diskcache.lua` keeps the
+results for the next start (`prebuild.lua:1-12`, `diskcache.lua:1-12`).
+
+This mod does not build pictures. The launcher's importer, or `modpack`, already
+wrote one animation atlas per view; the mod decodes an atlas the first time a
+species is seen and cuts each frame once. The embedded runtime keeps those
+frames per view (`pack.lua:221-240`); the imported runtime keeps a small LRU of
+atlases and frames (`external.lua:192-248`). After that, a frame is a table
+lookup plus `Pack.frameIndex`, not an image build. A facets-style prebuild would
+decode all 2,596 views up front — hundreds of megabytes of RGBA for no steady
+state gain — so it is deliberately not an option. If a low-end handheld shows a
+one-off hitch on the first encounter, pre-decoding that battler's atlas before
+the battle transition is the small fix; a full install cache is not.
 
 ## Switching back to cartridge art
 
@@ -255,9 +285,10 @@ back, and a frame change between two captures, and writes the screenshots under
   White and other regions are unverified, the launcher's importer rejects Black
   2/White 2, and
   the importer alone does not draw anything in battle — a renderer mod must
-  consume it. This mod is that renderer and it does not depend on the importer:
-  it decodes the same NARC/NNS data in Go offline, so no launcher import is
-  needed and the pack is one folder.
+  consume it. This mod is that renderer in two forms: the embedded build decodes
+  the same NARC/NNS data in Go offline (no import needed, one folder), while the
+  code-only build consumes the launcher's `gen5_bw` pack directly through
+  `mod.packs` and ships no art.
 
 ## Limits, stated plainly
 
@@ -269,6 +300,9 @@ back, and a frame change between two captures, and writes the screenshots under
 - **Forms and special cases.** Form-specific art (Castform, Deoxys, Unown
   letters) is not exported; those species show the cartridge picture unless their
   base national id is served.
+- **Code-only build: 240-tick prefix for some views.** The launcher's exporter
+  1.1.0 caps 360 imported views at 240 ticks (4 s). They play the exported prefix
+  and loop; the embedded build has full cycles.
 - **One animation per species.** The idle animation only. Move animations stay
   the cartridge's for unserved species and are suppressed for served ones, so a
   served species does not animate during a move; the idle loop keeps playing.

@@ -551,6 +551,7 @@ func modpackCommand(args []string) error {
 func modCommand(args []string) error {
 	fs := flag.NewFlagSet("mod", flag.ExitOnError)
 	packDir := fs.String("pack", "", "mod pack directory to wrap")
+	external := fs.Bool("external", false, "ship code only and read the launcher's imported Black/White pack")
 	out := fs.String("out", "", "directory to write the installable mod into")
 	zipPath := fs.String("zip", "", "also write an installable .zip of the mod to this file")
 	force := fs.Bool("force", false, "replace a non-empty destination directory")
@@ -560,12 +561,29 @@ func modCommand(args []string) error {
 	if *out == "" {
 		return errors.New("missing -out")
 	}
-	report, err := modpack.Assemble(*packDir, *out, *force)
+	if *external && *packDir != "" {
+		return errors.New("-external reads the launcher's imported pack and takes no -pack")
+	}
+	if !*external && *packDir == "" {
+		return errors.New("missing -pack; pass -pack DIR for an embedded pack or -external for the launcher's imported Black/White pack")
+	}
+	var report *modpack.AssembleReport
+	var err error
+	if *external {
+		report, err = modpack.AssembleExternal(*out, *force)
+	} else {
+		report, err = modpack.Assemble(*packDir, *out, *force)
+	}
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%d mod files and %d pack files (%s) written to %s\n",
-		report.ModFiles, report.PackFiles, humanBytes(report.Bytes), *out)
+	if *external {
+		fmt.Printf("%d mod files (%s, code only; reads the launcher's imported Black/White pack) written to %s\n",
+			report.ModFiles, humanBytes(report.Bytes), *out)
+	} else {
+		fmt.Printf("%d mod files and %d pack files (%s) written to %s\n",
+			report.ModFiles, report.PackFiles, humanBytes(report.Bytes), *out)
+	}
 	if *zipPath != "" {
 		files, bytes, err := modpack.Zip(*out, *zipPath)
 		if err != nil {
@@ -573,6 +591,11 @@ func modCommand(args []string) error {
 		}
 		fmt.Printf("%d files (%s) zipped to %s; install it with the launcher's \"Import mod .zip\"\n",
 			files, humanBytes(bytes), *zipPath)
+		return nil
+	}
+	if *external {
+		fmt.Printf("next: import your own Black/White dump in the launcher's IMPORTERS screen, then copy this folder to <LOVE save dir>/<identity>/mods/%s\n",
+			modpack.ModDirName)
 		return nil
 	}
 	fmt.Printf("next: copy it to <LOVE save dir>/<identity>/mods/%s, or run bwsprites install -pack %s\n",
@@ -583,27 +606,42 @@ func modCommand(args []string) error {
 func installCommand(args []string) error {
 	fs := flag.NewFlagSet("install", flag.ExitOnError)
 	packDir := fs.String("pack", "", "mod pack directory to install")
+	external := fs.Bool("external", false, "install code only; read the launcher's imported Black/White pack")
 	identity := fs.String("identity", "pokemon-love2d", "LOVE save identity the game runs under")
 	modsDir := fs.String("mods", "", "mods directory to install into; overrides -identity")
 	force := fs.Bool("force", false, "replace an existing bwsprites installation")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *packDir == "" {
-		return errors.New("missing -pack")
+	if *external && *packDir != "" {
+		return errors.New("-external reads the launcher's imported pack and takes no -pack")
+	}
+	if !*external && *packDir == "" {
+		return errors.New("missing -pack; pass -pack DIR for an embedded pack or -external for the launcher's imported Black/White pack")
 	}
 	mods, err := loveModsDir(*identity, *modsDir)
 	if err != nil {
 		return err
 	}
 	out := filepath.Join(mods, modpack.ModDirName)
-	report, err := modpack.Assemble(*packDir, out, *force)
+	var report *modpack.AssembleReport
+	if *external {
+		report, err = modpack.AssembleExternal(out, *force)
+	} else {
+		report, err = modpack.Assemble(*packDir, out, *force)
+	}
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%d mod files and %d pack files (%s) installed to %s\n",
-		report.ModFiles, report.PackFiles, humanBytes(report.Bytes), out)
-	fmt.Println("start the game; the mod menu lists it as \"BW Animated Sprites\"")
+	if *external {
+		fmt.Printf("%d mod files (%s, code only) installed to %s\n",
+			report.ModFiles, humanBytes(report.Bytes), out)
+		fmt.Println("import your own Black/White dump in the launcher's IMPORTERS screen, then start the game")
+	} else {
+		fmt.Printf("%d mod files and %d pack files (%s) installed to %s\n",
+			report.ModFiles, report.PackFiles, humanBytes(report.Bytes), out)
+		fmt.Println("start the game; the mod menu lists it as \"BW Animated Sprites\"")
+	}
 	return nil
 }
 

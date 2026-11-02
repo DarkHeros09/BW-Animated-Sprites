@@ -24,8 +24,8 @@ func TestZipWritesSingleFolderArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files != 5 || bytes <= 0 {
-		t.Fatalf("zip wrote %d files, %d bytes; want 5 files", files, bytes)
+	if files != 6 || bytes <= 0 {
+		t.Fatalf("zip wrote %d files, %d bytes; want 6 files", files, bytes)
 	}
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -94,6 +94,39 @@ func TestZipWritesSingleFolderArchive(t *testing.T) {
 		if strings.HasPrefix(name.Name(), ".bwsprites-zip-") {
 			t.Errorf("a temporary file %q was left behind", name.Name())
 		}
+	}
+}
+
+func TestZipExternalModHasFourFilesAndOneFolder(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "mod")
+	if _, err := AssembleExternal(dir, false); err != nil {
+		t.Fatal(err)
+	}
+	zipPath := filepath.Join(root, "dist", "bwsprites-bw.zip")
+	files, _, err := Zip(dir, zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files != 4 {
+		t.Fatalf("zip wrote %d files, want 4", files)
+	}
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	found := map[string]bool{}
+	for _, f := range r.File {
+		found[f.Name] = true
+	}
+	for _, rel := range []string{"manifest.json", "main.lua", "pack.lua", "external.lua"} {
+		if !found[ModDirName+"/"+rel] {
+			t.Errorf("archive has no %s/%s", ModDirName, rel)
+		}
+	}
+	if found[ModDirName+"/index.lua"] {
+		t.Error("the code-only archive embeds an index.lua")
 	}
 }
 
