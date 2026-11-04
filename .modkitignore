@@ -1,0 +1,16 @@
+# Development-only files, kept out of the assembled payload.
+#
+# tools/build_release.py reads this file when it zips the mod directory that
+# `bwsprites mod -external` produced, and matches entries as EXACT relative
+# paths (modkit's rule: no prefixes, no globs).  The assembled payload holds
+# only manifest.json and the Lua, so nothing here is normally present; the
+# entries exist for a hand-built release made *into the repo root* instead.
+#
+# A version bump means editing the two asset-name guards below.
+README.md
+CHANGELOG.md
+
+# A guard, not a description of the tree: these are build products, never
+# committed (see .gitignore and .github/workflows/release.yml).
+BW-Animated-Sprites-1.0.0.zip
+BW-Animated-Sprites-1.0.0.modpkg

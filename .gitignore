@@ -20,3 +20,12 @@ dist/
 # "bwsprites demo" / against your own ROM. Some hold copyrighted sprite data.
 demo/pack/
 demo/*.png
+
+# Graphify's generated index and local screenshots. Neither is part of the mod.
+graphify-out/
+screenshoots/
+
+# Release artifacts: the engine's .modpkg and the zip name the launcher
+# expects. CI rebuilds both, so they are never committed.
+*.modpkg
+BW-Animated-Sprites-*.zip

@@ -1,0 +1,145 @@
+name: Release
+
+# Publishes the launcher's payload as a GitHub Release asset.
+#
+# The launcher's auto-update (gen1recomp src/mods/ModUpdate.lua) reads GitHub
+# Releases, not tags, and prefers the asset named exactly
+# "<manifest id>-<version>.zip".  Both are derived here from
+# internal/modpack/assets/mod/manifest.json, so a version bump is the only
+# edit a release needs.  The job runs on every push to master and is
+# idempotent: an existing tag is left alone and an existing asset is replaced.
+#
+# To cut a release: bump "version" in the manifest and add a matching
+# "## <version>" section to CHANGELOG.md (that section becomes the Release
+# body, which is what the launcher shows under "What's New?").
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # The wrapper folder inside the zip is the directory name, and
+          # tools/build_release.py points the payload directory at this name.
+          path: BW-Animated-Sprites
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Resolve id and version
+        id: ver
+        working-directory: BW-Animated-Sprites
+        run: |
+          set -euo pipefail
+          MANIFEST="internal/modpack/assets/mod/manifest.json"
+          MOD_ID="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["id"])' "$MANIFEST")"
+          VERSION="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$MANIFEST")"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::manifest version '$VERSION' is not MAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          ZIP="${MOD_ID}-${VERSION}.zip"
+          TAG="v${VERSION}"
+          {
+            echo "mod_id=$MOD_ID"
+            echo "version=$VERSION"
+            echo "zip=$ZIP"
+            echo "tag=$TAG"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $MOD_ID $VERSION as $ZIP (tag $TAG)"
+
+      - name: Assemble the payload
+        working-directory: BW-Animated-Sprites
+        run: |
+          set -euo pipefail
+          OUT_DIR="$RUNNER_TEMP/BW-Animated-Sprites"
+          go run ./cmd/bwsprites mod -external -out "$OUT_DIR" -force
+          python3 - "$OUT_DIR" "${{ steps.ver.outputs.mod_id }}" "${{ steps.ver.outputs.version }}" <<'PY'
+          import json
+          import os
+          import sys
+
+          out, mod_id, version = sys.argv[1], sys.argv[2], sys.argv[3]
+          with open(os.path.join(out, "manifest.json"), encoding="utf-8") as handle:
+              manifest = json.load(handle)
+          got = (manifest["id"], manifest["version"])
+          if got != (mod_id, version):
+              raise SystemExit(
+                  "::error::assembled manifest says %s/%s, wanted %s/%s"
+                  % (got[0], got[1], mod_id, version)
+              )
+          names = sorted(os.listdir(out))
+          if len(names) != 4:
+              raise SystemExit(
+                  "::error::payload must hold exactly 4 files, found %d: %s"
+                  % (len(names), ", ".join(names))
+              )
+          print("payload: " + ", ".join(names))
+          PY
+
+      - name: Build the zip
+        working-directory: BW-Animated-Sprites
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/${{ steps.ver.outputs.zip }}"
+          python3 tools/build_release.py "$RUNNER_TEMP/BW-Animated-Sprites" -o "$OUT"
+          # The asset name is the contract: the launcher looks for exactly
+          # "<id>-<version>.zip" before falling back to any .zip.
+          test -s "$OUT"
+          echo "--- members ---"
+          python3 -c 'import sys, zipfile; print("\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))' "$OUT"
+
+      - name: Create the tag if it is new
+        working-directory: BW-Animated-Sprites
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ver.outputs.tag }}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
+            echo "tag $TAG already exists; leaving it alone"
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "created tag $TAG"
+          fi
+
+      - name: Publish the release
+        working-directory: BW-Animated-Sprites
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ver.outputs.tag }}"
+          VERSION="${{ steps.ver.outputs.version }}"
+          ZIP="${{ steps.ver.outputs.zip }}"
+          OUT="$RUNNER_TEMP/$ZIP"
+          # The release body is the payload's "What's New?" text, so it comes
+          # from the matching CHANGELOG.md section -- or the job fails.
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          python3 tools/changelog_section.py "$VERSION" CHANGELOG.md > "$NOTES"
+          test -s "$NOTES"
+          echo "--- release body (first lines) ---"
+          head -3 "$NOTES"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$OUT" --clobber
+            gh release edit "$TAG" --notes-file "$NOTES"
+          else
+            gh release create "$TAG" "$OUT" \
+              --title "BW Animated Sprites $TAG" \
+              --notes-file "$NOTES"
+          fi
+          echo "assets now on $TAG:"
+          gh release view "$TAG" --json assets --jq '.assets[].name'
+          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fx "$ZIP"
