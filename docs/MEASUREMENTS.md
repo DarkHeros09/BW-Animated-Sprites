@@ -77,14 +77,14 @@ bird whose wings move has a tall union, so fitting the union into a 72 px slot
 shrank the body to 58 px and resampled it. Native cells remove both problems.
 
 - **Enemy front: a square cell from 64 px up, as large as the union needs.** Every
-  Black/White and Black 2/White 2 front keeps its own pixels — Pidgeotto is
-  104 px, Fearow 96, Lugia 156 and Pikachu 64 — because the cell grows with the
-  art instead of the art shrinking into a slot. The 240×160 scene has only 72
-  rows above the enemy ground row, so a taller front cannot also put its feet on
-  that row. The runtime anchors its ink top on scene row 0 and lets the bottom
-  run behind the battle UI; the user allowed that as long as the top is never
-  clipped. A front wider than the room right of the enemy base (x=176) is slid
-  left by the draw wrapper until it fits the 240 px scene.
+  Black/White front keeps its own pixels — Pidgeotto is 104 px, Fearow 96, Lugia
+  156 and Pikachu 64 — because the cell grows with the art instead of the art
+  shrinking into a slot. The 240×160 scene has only 72 rows above the enemy
+  ground row, so a taller front cannot also put its feet on that row. The runtime
+  anchors its ink top on scene row 0 and lets the bottom run behind the battle
+  UI; the user allowed that as long as the top is never clipped. A front wider
+  than the room right of the enemy base (x=176) is slid left by the draw wrapper
+  until it fits the 240 px scene.
 - **Player back: a square cell from 64 px up.** The player ground row is low, so a
   native back keeps its size; Charizard is 100 px, not 53. A tall back is moved
   down until its first ink row is on scene row 46 or later, below the enemy HP

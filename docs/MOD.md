@@ -96,36 +96,36 @@ The draw site is `src/core/game3/battle/ui.lua:2299`:
 ```sh
 # 1. Data: every species, both sides, normal and shiny, native cells.
 go run ./cmd/bwsprites modpack -rom "Black.nds" -out build/modpack
-#    Black 2/White 2 work the same way: pass that dump instead. The pack records
-#    which game pair it came from and the mod reads either unchanged.
 
-# 2a. Install straight into a LÖVE save identity (creates <save>/mods/bwsprites):
+# 2a. Install straight into a LÖVE save identity
+#     (creates <save>/mods/BW-Animated-Sprites):
 go run ./cmd/bwsprites install -pack build/modpack -identity pokemon-love2d
 
 # 2b. Or assemble a folder to copy yourself:
 go run ./cmd/bwsprites mod -pack build/modpack -out build/bwsprites
-#     then copy build/bwsprites to <LOVE save dir>/<identity>/mods/bwsprites
+#     then copy build/bwsprites to
+#     <LOVE save dir>/<identity>/mods/BW-Animated-Sprites
 
 # 2c. Or build the installable .zip the launcher's "Import mod .zip" takes:
 go run ./cmd/bwsprites mod -pack build/modpack -out build/bwsprites -zip dist/bwsprites.zip
 
-# 3. Code-only build (Black/White only): no art in the mod. Import the dump once
-#    in the launcher's IMPORTERS screen, then install just the reader:
+# 3. Code-only build: no art in the mod. Import the dump once in the launcher's
+#    IMPORTERS screen, then install just the reader:
 go run ./cmd/bwsprites install -external -identity pokemon-love2d
 go run ./cmd/bwsprites mod -external -out build/bwsprites-bw -zip dist/bwsprites-bw.zip
 ```
 
 The code-only build writes four files (`manifest.json`, `main.lua`, `pack.lua`,
 `external.lua`) and declares the imported pack as a required asset. It reads
-`asset_packs/gen5_bw/battle_sprites` through `mod.packs`; the launcher rejects
-Black 2/White 2, so that pair needs the embedded build.
+`asset_packs/gen5_bw/battle_sprites` through `mod.packs`.
 
 The installer accepts one shape only: either `manifest.json` at the archive
 root, or exactly one top-level folder holding it
 (`LauncherMods.locateRoot`, `src/mods/LauncherMods.lua:436`). `-zip` writes the
-second shape — every file under `bwsprites/`, nothing else — so a README or a
-screenshot beside the mod folder would not be packaged. Unzipping that archive
-into `<save>/<identity>/mods/` installs the same bytes as `install`.
+second shape — every file under `BW-Animated-Sprites/`, nothing else — so a
+README or a screenshot beside the mod folder would not be packaged. Unzipping
+that archive into `<save>/<identity>/mods/` installs the same bytes as
+`install`.
 
 `-identity` defaults to `pokemon-love2d`; `-mods DIR` overrides the whole path.
 The LOVE save root is `%APPDATA%/LOVE` on Windows,
@@ -134,8 +134,8 @@ The LOVE save root is `%APPDATA%/LOVE` on Windows,
 is `POKEPORT_IDENTITY` or the default `pokemon-love2d`.
 
 Then start the game and enable **BW Animated Sprites** in the mod menu (the
-engine records this as `modsByVersion.<game>["bwsprites"] = true` in
-`options.lua`). The mod logs one line when it loads:
+engine records this as `modsByVersion.<game>["BW-Animated-Sprites"] = true`
+in `options.lua`). The mod logs one line when it loads:
 
 ```
 [bwsprites] bwsprites: 649 species, 2596 views (1298 female), 53618 frames from Pokemon Black (IRBO) (2/2 sides on BW, native cells, fixed origin)
@@ -193,8 +193,9 @@ on the engine's menu generation:
 Both default to `BW`. `DEFAULT` serves the cartridge picture for that side and
 restores the `PicCoords` padding the mod cleared, so its feet land exactly where
 vanilla puts them; the other side is unaffected. The choice applies on the next
-draw, survives a save, and is stored in `options.modOptions.bwsprites`
-(`playerSprites` / `foeSprites`) — the same tree the engine's own OPTIONS use.
+draw, survives a save, and is stored in
+`options.modOptions["BW-Animated-Sprites"]` (`playerSprites` / `foeSprites`) —
+the same tree the engine's own OPTIONS use.
 
 The mod writes the live choice into both the engine's options tree and its own
 table. That matters on engines where `mod.options:get` reads the table loaded at
@@ -289,13 +290,11 @@ back, and a frame change between two captures, and writes the screenshots under
   (EXPORT_VERSION `1.1.0`) writes `asset_packs/gen5_bw/battle_sprites`, and the
   example provider `mods/examples/gen5_battle_sprites` hands out frames up to
   256×256 with the consumer choosing the display scale. Black is the tested dump;
-  White and other regions are unverified, the launcher's importer rejects Black
-  2/White 2, and
-  the importer alone does not draw anything in battle — a renderer mod must
-  consume it. This mod is that renderer in two forms: the embedded build decodes
-  the same NARC/NNS data in Go offline (no import needed, one folder), while the
-  code-only build consumes the launcher's `gen5_bw` pack directly through
-  `mod.packs` and ships no art.
+  White and other regions are unverified, and the importer alone does not draw
+  anything in battle — a renderer mod must consume it. This mod is that renderer
+  in two forms: the embedded build decodes the same NARC/NNS data in Go offline
+  (no import needed, one folder), while the code-only build consumes the
+  launcher's `gen5_bw` pack directly through `mod.packs` and ships no art.
 
 ## Limits, stated plainly
 
@@ -321,9 +320,9 @@ back, and a frame change between two captures, and writes the screenshots under
 - **Animations play at cartridge speed.** A frame is a distinct
   `(cell, transform)` pose, not only a distinct cell: a sprite that sways,
   squashes or hovers on one cell still animates. That restores 13,777 front /
-  13,032 back male poses, plus female views and the full cycles (35,320 frames
-  from the Black 2 dump; only dex 273, 299 and 546 genuinely have one frame), so
-  nothing is frozen or skipped.
+  13,032 back male poses, plus female views and the full cycles (35,320 frames;
+  only dex 273, 299 and 546 genuinely have one frame), so nothing is frozen or
+  skipped.
   NMAR durations are hold times in 60 Hz ticks and are used as-is.
 - **Native sizes, not facets' 64x64 cap.** A cell is the animation's union, so no
   view is resampled and a bird that moves its wings no longer shrinks to fit a
@@ -343,8 +342,8 @@ back, and a frame change between two captures, and writes the screenshots under
 - **Cycles cap at 480 ticks (8 s).** Most idles are shorter (median 90 ticks;
   96% at or under Charizard's 432), so they loop whole. A few multi-part idles
   repeat only after a very large least common multiple; those export the first
-  8 s (56 views for the Black 2 dump) and the pack build prints the count. No
-  frame is cut or resampled.
+  8 s (56 views) and the pack build prints the count. No frame is cut or
+  resampled.
 - **The battle scene stays 240×160.** Gen 3's display size is fixed
   (`src/core/game3/display.lua:9-10`); a mod can change what is drawn in it, not
   its size. The native front/back art runs behind the battle UI when taller than

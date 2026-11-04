@@ -1,9 +1,10 @@
 {
-  "id": "bwsprites",
+  "id": "BW-Animated-Sprites",
   "name": "BW Animated Sprites",
-  "version": "1.13.0",
+  "version": "1.0.0",
   "api": 2,
   "entry": "main.lua",
+  "github": "DarkHeros09/BW-Animated-Sprites",
   "profile": "content",
   "category": "VISUAL",
   "games": [
@@ -17,5 +18,5 @@
   "permissions": [
     "engine_internals"
   ],
-  "description": "Replaces the Gen 3 battle pictures of every species with the animated Black/White or Black 2/White 2 sprite extracted from your own local dump, at the art's native size: nothing is scaled down or resampled, so moving wings stay sharp, wide species keep their width and a back keeps its own height (cells up to 156x156 px). A front taller than the enemy slot is anchored at the scene top and runs behind the battle menu; the mod slides wide fronts left to keep them inside the 240 px scene. The player's back is shifted left of the battler without touching the screen edge and starts below the enemy healthbox so a large picture is never clipped at the top (its feet may run behind the battle menu). Every picture lands its lowest ink row on the cartridge's ground row. The Pokedex plays the idle animation at the art's native size, centred in the card's own picture area (112x68) and kept wholly on screen: it never resamples the dump's pixels and never cuts a pose off, so a window larger than the area overhangs the card instead of being reduced. Distinct female graphics are used for a female battler, front and back; a species without them uses its male view. Animations keep their ROM timing. Front and back, normal and shiny. The OPTION menu gains MY POKEMON and OPPONENT switches (or one BW SPRITES group) to choose BW or DEFAULT (the cartridge picture) per side; the choice is saved. Ships no game art: build the pack from a ROM you own with the bwsprites tool."
+  "description": "Replaces the Gen 3 battle pictures and Pokedex entries with the animated Black/White sprites from your own imported dump. Every view plays at the art's native size: nothing is scaled down or resampled, so wide fronts and tall backs stay sharp, and each picture stands on the cartridge's ground row. The Pokedex plays the idle animation at native size, centred in the card's picture area. Distinct female graphics are used front and back; normal and shiny palettes included. The OPTION menu gains MY POKEMON and OPPONENT switches (BW or DEFAULT), and the choice is saved. Ships no game art: import Black/White with the launcher's gen5_bw importer first."
 }

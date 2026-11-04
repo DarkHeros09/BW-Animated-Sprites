@@ -72,8 +72,7 @@ func usage() {
   bwsprites verify -pack DIR
   bwsprites demo   -out DIR [-force]
 
-The ROM must be an untrimmed 256 MiB Black or White (IRB*/IRA*) or 512 MiB
-Black 2 or White 2 (IRE*/IRD*) dump.
+The ROM must be an untrimmed 256 MiB Black or White (IRB*/IRA*) dump.
 A range like 1-20 or a list 1,4,25 works; "both" expands to every value.
 
 -frame 0 fits each sprite's cell to its own content, never below the facets

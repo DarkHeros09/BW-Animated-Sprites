@@ -3,8 +3,8 @@
 -- Geometry. The pack keeps facets' ground rule: the ink is centred on the column
 -- and its lowest row is the cell's last row. The cell is the animation's own
 -- size: nothing is enlarged and nothing is scaled down, so an enemy front and
--- the player's back both keep the pixels Black/White (or Black 2/White 2)
--- authored. The mod zeroes the species' y padding and substitutes the anchor
+-- the player's back both keep the pixels Black/White authored. The mod zeroes
+-- the species' y padding and substitutes the anchor
 -- correction, and on a fixed-origin engine shifts a wide cell left by half its
 -- extra width. Nothing is scaled at load. See docs/MEASUREMENTS.md and
 -- docs/FORMAT.md.
@@ -29,8 +29,8 @@ if not Pack then
   return
 end
 
--- Two builds share this file. The BW2 build ships an embedded index.lua and
--- PNGs; the asset-free BW build ships neither and reads the launcher's own
+-- Two builds share this file. One ships its own embedded index.lua and PNGs;
+-- the asset-free build ships neither and reads the launcher's own
 -- gen5_bw/battle_sprites pack instead. A missing index is therefore not an
 -- error until the imported pack is also unavailable.
 local indexPath = "index.lua"
