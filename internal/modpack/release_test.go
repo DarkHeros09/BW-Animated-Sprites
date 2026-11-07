@@ -10,7 +10,7 @@ import (
 
 // releaseVersion is the version pinned by this release. Bump it together with
 // assets/mod/manifest.json, CHANGELOG.md and .modkitignore.
-const releaseVersion = "1.0.0"
+const releaseVersion = "1.0.1"
 
 // sequelWording is what this release must never say: the code-only build reads
 // the launcher's Black/White import and nothing else. The names are split so a

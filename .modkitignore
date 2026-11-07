@@ -12,5 +12,5 @@ CHANGELOG.md
 
 # A guard, not a description of the tree: these are build products, never
 # committed (see .gitignore and .github/workflows/release.yml).
-BW-Animated-Sprites-1.0.0.zip
-BW-Animated-Sprites-1.0.0.modpkg
+BW-Animated-Sprites-1.0.1.zip
+BW-Animated-Sprites-1.0.1.modpkg

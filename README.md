@@ -27,7 +27,7 @@ runtime, and it ships no game art.
 
 1. Open the launcher, go to **IMPORTERS → Pokémon Black/White**, pick your
    `.nds`, and wait for `gen5_bw` to finish.
-2. Download `BW-Animated-Sprites-1.0.0.zip` from Releases and install it with
+2. Download `BW-Animated-Sprites-1.0.1.zip` from Releases and install it with
    the launcher's **Import mod .zip** — or unzip it so that
    `mods/BW-Animated-Sprites/manifest.json` exists.
 3. Enable **BW Animated Sprites** in the mod menu and restart the game.

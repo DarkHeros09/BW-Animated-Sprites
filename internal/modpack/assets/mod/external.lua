@@ -209,15 +209,14 @@ local function buildIndex(views, info)
   }
 end
 
--- newest evicts one entry once the cache is full. The evicted texture or image
--- data has to be released: dropping the Lua reference alone left the GPU copy
--- alive, so a long session collected every frame it had ever drawn. The cache
--- is sized by its entry count, not by how many calls have happened: testing the
--- ever-growing serial against the limit evicted an entry on every insert after
--- the first few, so a two-atlas battle decoded both PNGs again every frame.
-local function releaseImage(item)
-  if item and item.image and item.image.release then item.image:release() end
-end
+-- newest evicts one entry once the cache is full. A picture handed to the
+-- engine stays owned by whoever holds it: eviction only drops this module's Lua
+-- reference, and LÖVE's garbage collector frees the texture when the last
+-- holder lets go. Releasing an evicted picture broke double battles, where a
+-- particle or sprite keeps drawing the same Image across frames and the next
+-- draw hit "Cannot use object after it has been released". ImageData that never
+-- leaves this module (atlases, and the composed source of a part image) is
+-- still released explicitly: nothing outside can be using it.
 local function releaseData(item)
   if item and item.data and item.data.release then item.data:release() end
 end
@@ -336,7 +335,7 @@ function External:cellImage(view, index)
   local image = love.graphics.newImage(out)
   out:release()
   image:setFilter("nearest", "nearest")
-  newest(self.frames, FRAME_CACHE, self.serial, releaseImage)
+  newest(self.frames, FRAME_CACHE, self.serial)
   self.frames[key] = { image = image, used = self.serial }
   return image
 end
@@ -353,7 +352,7 @@ function External:dexImage(view, index)
   local image = love.graphics.newImage(out)
   out:release()
   image:setFilter("nearest", "nearest")
-  newest(self.dex, DEX_CACHE, self.serial, releaseImage)
+  newest(self.dex, DEX_CACHE, self.serial)
   self.dex[key] = { image = image, used = self.serial }
   return image
 end
@@ -550,10 +549,7 @@ function External:composeParts(view, tick)
   local data = love.image.newImageData(W, H, "rgba8", table.concat(strings))
   local image = love.graphics.newImage(data)
   image:setFilter("nearest", "nearest")
-  newest(self.partImages, PARTS_IMAGE_CACHE, self.serial, function(item)
-    releaseImage(item)
-    releaseData(item)
-  end)
+  newest(self.partImages, PARTS_IMAGE_CACHE, self.serial, releaseData)
   self.partImages[key] = { image = image, data = data, used = self.serial }
   return image, signature, data
 end
@@ -569,7 +565,7 @@ function External:partsCell(view, tick)
   local image = love.graphics.newImage(out)
   out:release()
   image:setFilter("nearest", "nearest")
-  newest(self.partCells, PARTS_IMAGE_CACHE, self.serial, releaseImage)
+  newest(self.partCells, PARTS_IMAGE_CACHE, self.serial)
   self.partCells[key] = { image = image, used = self.serial }
   return image
 end
@@ -638,7 +634,7 @@ function External:boxFrame(nat, side, shiny, now, boxW, boxH)
   if not image then return nil, "could not cut an imported dex picture" end
   local boxed, err = PackFitRect(image, { x = 0, y = 0, w = view.width, h = view.height }, boxW, boxH)
   if not boxed then return nil, err end
-  newest(self.boxes, BOX_CACHE, self.serial, releaseImage)
+  newest(self.boxes, BOX_CACHE, self.serial)
   self.boxes[key] = { image = boxed, used = self.serial }
   return { image = boxed, w = boxW, h = boxH, animated = view.frames > 1 }
 end
